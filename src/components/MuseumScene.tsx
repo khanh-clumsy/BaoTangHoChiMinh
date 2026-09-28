@@ -1,4 +1,4 @@
-import { Html, SoftShadows } from '@react-three/drei'
+import { Html, OrbitControls } from '@react-three/drei'
 import { Canvas, ThreeEvent, useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
@@ -19,8 +19,8 @@ function CameraSetup() {
   const { camera } = useThree()
 
   useEffect(() => {
-    camera.position.set(17, 20, 20)
-    camera.lookAt(0, 0, -1)
+    camera.position.set(18, 22, 18)
+    camera.lookAt(0, 0, 0)
     camera.updateProjectionMatrix()
   }, [camera])
 
@@ -31,7 +31,7 @@ function Wall({ position, scale }: { position: [number, number, number]; scale: 
   return (
     <mesh position={position} castShadow receiveShadow>
       <boxGeometry args={scale} />
-      <meshStandardMaterial color="#d7cfc1" roughness={0.88} />
+      <meshStandardMaterial color="#c4b8a5" roughness={0.7} metalness={0.05} />
     </mesh>
   )
 }
@@ -50,11 +50,11 @@ function Artifact({ kind }: { kind: Exhibit['kind'] }) {
       <group position={[0, 0.62, 0]}>
         <mesh position={[0, 0.7, 0]} castShadow>
           <capsuleGeometry args={[0.28, 0.9, 6, 12]} />
-          <meshStandardMaterial color="#9b6d43" metalness={0.35} roughness={0.5} />
+          <meshStandardMaterial color="#b8860b" metalness={0.4} roughness={0.35} />
         </mesh>
         <mesh position={[0, 1.38, 0]} castShadow>
           <sphereGeometry args={[0.31, 20, 20]} />
-          <meshStandardMaterial color="#9b6d43" metalness={0.35} roughness={0.5} />
+          <meshStandardMaterial color="#b8860b" metalness={0.4} roughness={0.35} />
         </mesh>
       </group>
     )
@@ -157,18 +157,18 @@ function DisplayCase({ exhibit, active, visited, onNavigate }: {
     <group position={exhibit.position}>
       <mesh position={[0, 0.18, 0]} receiveShadow castShadow>
         <boxGeometry args={[2.1, 0.36, 1.55]} />
-        <meshStandardMaterial color={active ? '#7b2e2e' : '#8a735c'} roughness={0.72} />
+        <meshStandardMaterial color={active ? '#963935' : '#735f4b'} roughness={0.7} />
       </mesh>
       <Artifact kind={exhibit.kind} />
       <mesh position={[0, 1.28, 0]} castShadow>
         <boxGeometry args={[1.95, 1.82, 1.4]} />
         <meshPhysicalMaterial
-          color="#dfe9e4"
+          color="#e6f0ed"
           transparent
-          opacity={0.17}
-          roughness={0.08}
-          transmission={0.25}
-          thickness={0.08}
+          opacity={0.2}
+          roughness={0.05}
+          transmission={0.3}
+          thickness={0.1}
         />
       </mesh>
       <mesh
@@ -180,7 +180,10 @@ function DisplayCase({ exhibit, active, visited, onNavigate }: {
         castShadow
       >
         <octahedronGeometry args={[hovered ? 0.34 : 0.27, 0]} />
-        <meshStandardMaterial color={visited ? '#c9a96b' : '#8a2f2f'} emissive={hovered ? '#642020' : '#000000'} />
+        <meshStandardMaterial
+          color={visited ? '#d4af37' : '#963935'}
+          emissive={hovered ? '#b0433e' : visited ? '#4a3d12' : '#2d0f0e'}
+        />
       </mesh>
       <Html position={[0, 3.15, 0]} center distanceFactor={15} style={{ pointerEvents: 'none' }}>
         <div className={`world-tag ${active ? 'is-active' : ''}`}>
@@ -239,24 +242,24 @@ function Player({ targetRef, onReached }: {
       <group ref={body}>
         <mesh position={[0, 0.86, 0]} castShadow>
           <capsuleGeometry args={[0.28, 0.65, 6, 10]} />
-          <meshStandardMaterial color="#33485b" roughness={0.75} />
+          <meshStandardMaterial color="#2d4255" roughness={0.6} />
         </mesh>
         <mesh position={[0, 1.55, 0]} castShadow>
           <sphereGeometry args={[0.29, 18, 18]} />
-          <meshStandardMaterial color="#d8a77e" roughness={0.9} />
+          <meshStandardMaterial color="#d8a77e" roughness={0.8} />
         </mesh>
         <mesh position={[-0.19, 0.18, 0]} castShadow>
           <boxGeometry args={[0.17, 0.48, 0.28]} />
-          <meshStandardMaterial color="#2c343c" />
+          <meshStandardMaterial color="#1f252b" />
         </mesh>
         <mesh position={[0.19, 0.18, 0]} castShadow>
           <boxGeometry args={[0.17, 0.48, 0.28]} />
-          <meshStandardMaterial color="#2c343c" />
+          <meshStandardMaterial color="#1f252b" />
         </mesh>
       </group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
         <ringGeometry args={[0.38, 0.55, 28]} />
-        <meshBasicMaterial color="#7b2e2e" transparent opacity={0.45} />
+        <meshBasicMaterial color="#963935" transparent opacity={0.6} />
       </mesh>
     </group>
   )
@@ -295,28 +298,43 @@ function MuseumWorld({ command, activeId, visited, onArrive, onMoveAnywhere }: P
   return (
     <>
       <CameraSetup />
-      <SoftShadows size={24} samples={14} focus={0.4} />
-      <color attach="background" args={['#eee8dd']} />
-      <fog attach="fog" args={['#eee8dd', 28, 48]} />
-      <ambientLight intensity={1.55} />
-      <directionalLight position={[8, 16, 10]} intensity={2.1} castShadow shadow-mapSize={[2048, 2048]} />
+      <color attach="background" args={['#e8e2d5']} />
+      <ambientLight intensity={1.2} />
+      <directionalLight
+        position={[18, 28, 18]}
+        intensity={1.8}
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+        shadow-camera-near={1}
+        shadow-camera-far={60}
+        shadow-camera-left={-22}
+        shadow-camera-right={22}
+        shadow-camera-top={22}
+        shadow-camera-bottom={-22}
+        shadow-bias={-0.0003}
+      />
+      <directionalLight position={[-14, 18, -14]} intensity={0.5} />
 
+      {/* Floor */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]} receiveShadow onPointerDown={handleFloorClick}>
-        <planeGeometry args={[25, 29]} />
-        <meshStandardMaterial color="#d8cbb8" roughness={0.94} />
+        <planeGeometry args={[26, 30]} />
+        <meshStandardMaterial color="#ded5c5" roughness={0.8} />
       </mesh>
 
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 3.5]} receiveShadow>
+      {/* Main hallway path */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 3.5]} receiveShadow onPointerDown={handleFloorClick}>
         <planeGeometry args={[6.2, 20.5]} />
-        <meshStandardMaterial color="#eee5d7" roughness={0.92} />
+        <meshStandardMaterial color="#f0e9dc" roughness={0.7} />
       </mesh>
 
-      <Wall position={[-12.2, 1.2, 0]} scale={[0.35, 2.4, 29]} />
-      <Wall position={[12.2, 1.2, 0]} scale={[0.35, 2.4, 29]} />
-      <Wall position={[0, 1.2, -14.2]} scale={[24.5, 2.4, 0.35]} />
-      <Wall position={[-7.3, 1.2, 14.2]} scale={[9.6, 2.4, 0.35]} />
-      <Wall position={[7.3, 1.2, 14.2]} scale={[9.6, 2.4, 0.35]} />
+      {/* Exterior walls */}
+      <Wall position={[-12.5, 1.2, 0]} scale={[0.4, 2.4, 29.5]} />
+      <Wall position={[12.5, 1.2, 0]} scale={[0.4, 2.4, 29.5]} />
+      <Wall position={[0, 1.2, -14.5]} scale={[25, 2.4, 0.4]} />
+      <Wall position={[-7.5, 1.2, 14.5]} scale={[9.8, 2.4, 0.4]} />
+      <Wall position={[7.5, 1.2, 14.5]} scale={[9.8, 2.4, 0.4]} />
 
+      {/* Room interior dividers */}
       <Wall position={[-8.4, 1.05, 6.9]} scale={[7.5, 2.1, 0.25]} />
       <Wall position={[8.4, 1.05, 6.9]} scale={[7.5, 2.1, 0.25]} />
       <Wall position={[-8.4, 1.05, -2.0]} scale={[7.5, 2.1, 0.25]} />
@@ -324,6 +342,7 @@ function MuseumWorld({ command, activeId, visited, onArrive, onMoveAnywhere }: P
       <Wall position={[-8.4, 1.05, -8.8]} scale={[7.5, 2.1, 0.25]} />
       <Wall position={[8.4, 1.05, -8.8]} scale={[7.5, 2.1, 0.25]} />
 
+      {/* Room labels */}
       <RoomLabel position={[0, 0.25, 11.4]}>LỐI VÀO</RoomLabel>
       <RoomLabel position={[0, 0.25, 4.4]}>GIAN LONG TRỌNG</RoomLabel>
       <RoomLabel position={[-7.3, 0.25, 3.6]}>QUÊ HƯƠNG</RoomLabel>
@@ -332,6 +351,7 @@ function MuseumWorld({ command, activeId, visited, onArrive, onMoveAnywhere }: P
       <RoomLabel position={[7.3, 0.25, -6.7]}>KỶ VẬT</RoomLabel>
       <RoomLabel position={[0, 0.25, -12.6]}>TƯỞNG NIỆM</RoomLabel>
 
+      {/* Exhibits */}
       {exhibits.map((item) => (
         <DisplayCase
           key={item.id}
@@ -343,6 +363,15 @@ function MuseumWorld({ command, activeId, visited, onArrive, onMoveAnywhere }: P
       ))}
 
       <Player targetRef={targetRef} onReached={handleReached} />
+
+      <OrbitControls
+        makeDefault
+        enableDamping
+        dampingFactor={0.08}
+        maxPolarAngle={Math.PI / 2.15}
+        minDistance={10}
+        maxDistance={60}
+      />
     </>
   )
 }
@@ -350,11 +379,10 @@ function MuseumWorld({ command, activeId, visited, onArrive, onMoveAnywhere }: P
 export function MuseumScene(props: Props) {
   return (
     <Canvas
-      orthographic
       shadows
-      dpr={[1, 1.75]}
-      camera={{ position: [17, 20, 20], zoom: 34, near: 0.1, far: 100 }}
-      gl={{ antialias: true }}
+      dpr={[1, 2]}
+      camera={{ position: [18, 22, 18], fov: 42, near: 0.1, far: 150 }}
+      gl={{ antialias: true, preserveDrawingBuffer: true }}
     >
       <MuseumWorld {...props} />
     </Canvas>
