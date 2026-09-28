@@ -1,9 +1,21 @@
-export type RoomId = 'main' | 'room1' | 'room2' | 'room3'
+export type ExhibitKind = 'statue' | 'heritage' | 'document' | 'sandals' | 'clothing' | 'memorial'
 
-export type Treasure = {
+export type Exhibit = {
   id: string
-  room: RoomId
+  index: number
   title: string
-  subtitle: string
+  period: string
+  zone: string
+  summary: string
+  narration: string
+  kind: ExhibitKind
   position: [number, number, number]
+  approach: [number, number]
+  map: [number, number]
+}
+
+export type MoveCommand = {
+  id: number
+  destination: [number, number]
+  exhibitId?: string
 }
