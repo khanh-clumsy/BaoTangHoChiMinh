@@ -86,11 +86,21 @@ export default function App() {
       </div>
 
       {active && (
-        <ExhibitPanel
-          exhibit={active}
-          visited={visited.has(active.id)}
-          onClose={() => setActive(undefined)}
-        />
+        <>
+          <button
+            className="exit-inspect-btn"
+            onClick={() => setActive(undefined)}
+            title="Bấm hoặc nhấn phím ESC để quay lại góc nhìn bảo tàng"
+          >
+            <span className="exit-icon">✕</span>
+            <span>Thoát Chế Độ Xem (ESC)</span>
+          </button>
+          <ExhibitPanel
+            exhibit={active}
+            visited={visited.has(active.id)}
+            onClose={() => setActive(undefined)}
+          />
+        </>
       )}
 
       {!started && (

@@ -43,12 +43,14 @@ const OBSTACLES: Obstacle[] = [
   { minX: 4.3, maxX: 12.4, minZ: -9.1, maxZ: -8.5 },
 
   // Display Cases (Pedestals + Glass)
-  { minX: -1.3, maxX: 1.3, minZ: 4.8, maxZ: 6.8 },      // Statue (0, 5.8)
-  { minX: -7.7, maxX: -5.1, minZ: 0.5, maxZ: 2.5 },     // Exhibit 2 (-6.4, 1.5)
-  { minX: 5.1, maxX: 7.7, minZ: 0.5, maxZ: 2.5 },      // Exhibit 3 (6.4, 1.5)
-  { minX: -7.7, maxX: -5.1, minZ: -6.2, maxZ: -4.2 },   // Exhibit 4 (-6.4, -5.2)
-  { minX: 5.1, maxX: 7.7, minZ: -6.2, maxZ: -4.2 },    // Exhibit 5 (6.4, -5.2)
-  { minX: -1.3, maxX: 1.3, minZ: -11.5, maxZ: -9.5 },   // Exhibit 6 (0, -10.5)
+  { minX: -1.4, maxX: 1.4, minZ: 6.3, maxZ: 8.7 },      // Statue (0, 7.5)
+  { minX: -1.4, maxX: 1.4, minZ: 0.6, maxZ: 3.0 },      // Bust (0, 1.8)
+  { minX: -8.4, maxX: -5.6, minZ: 2.8, maxZ: 5.2 },     // French branch (-7.0, 4.0)
+  { minX: 5.6, maxX: 8.4, minZ: 2.8, maxZ: 5.2 },      // Letter to workers (7.0, 4.0)
+  { minX: -8.4, maxX: -5.6, minZ: -6.0, maxZ: -3.6 },   // Declaration (-7.0, -4.8)
+  { minX: 5.6, maxX: 8.4, minZ: -6.0, maxZ: -3.6 },    // Silk shirt (7.0, -4.8)
+  { minX: -8.4, maxX: -5.6, minZ: -12.7, maxZ: -10.3 }, // Khaki outfit (-7.0, -11.5)
+  { minX: -1.4, maxX: 1.4, minZ: -12.7, maxZ: -10.3 },  // National emblem (0, -11.5)
 ]
 
 export function isWalkable(x: number, z: number): boolean {

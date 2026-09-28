@@ -1,10 +1,20 @@
-import { Html, Line, OrbitControls } from '@react-three/drei'
+import { Environment, Html, Line, OrbitControls, Sparkles } from '@react-three/drei'
 import { Canvas, ThreeEvent, useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { exhibits } from '../data/exhibits'
 import type { Exhibit, MoveCommand } from '../types'
 import { clampToWalkable, findPath, Point2D } from '../utils/pathfinding'
+import {
+  ClothingArtifact,
+  DocumentsArtifact,
+  EmblemArtifact,
+  GLBArtifact,
+  HeritageArtifact,
+  MemorialArtifact,
+  SandalsArtifact,
+  StatueArtifact,
+} from './Artifacts'
 
 type Props = {
   command?: MoveCommand
@@ -40,35 +50,55 @@ function CameraController({
   const { camera } = useThree()
   const targetCamPos = useRef(new THREE.Vector3().copy(DEFAULT_CAM_POS))
   const targetLookAt = useRef(new THREE.Vector3().copy(DEFAULT_CAM_TARGET))
+  const isTransitioning = useRef(false)
 
   useEffect(() => {
+    isTransitioning.current = true
     if (activeId) {
       const activeExhibit = exhibits.find((e) => e.id === activeId)
       if (activeExhibit) {
-        // Inspect Mode: Zoom in close to exhibit with cinematic isometric angle
+        // Inspect Mode: Tính toán góc nhìn trực diện mặt trước hiện vật từ hướng tiếp cận (approach)
         const exPos = activeExhibit.position
-        targetLookAt.current.set(exPos[0], exPos[1] + 1.1, exPos[2])
-        targetCamPos.current.set(exPos[0] + 4.2, exPos[1] + 3.2, exPos[2] + 4.8)
+        targetLookAt.current.set(exPos[0], exPos[1] + 1.0, exPos[2])
+
+        const dirX = activeExhibit.approach[0] - exPos[0]
+        const dirZ = activeExhibit.approach[1] - exPos[2]
+        const len = Math.hypot(dirX, dirZ) || 1
+        const normX = dirX / len
+        const normZ = dirZ / len
+
+        // Đặt camera lùi ra 3.6m trực diện phía trước hiện vật (hướng ra lối đi), độ cao Y = 1.35m
+        targetCamPos.current.set(
+          exPos[0] + normX * 3.6,
+          exPos[1] + 1.35,
+          exPos[2] + normZ * 3.6
+        )
       }
     } else {
-      // Overview Mode: Return smoothly to museum overview
+      // Overview Mode: Quay lại góc nhìn toàn cảnh bảo tàng mượt mà
       targetLookAt.current.copy(DEFAULT_CAM_TARGET)
       if (isLocked) {
         targetCamPos.current.copy(DEFAULT_CAM_POS)
       }
     }
+
+    const timer = setTimeout(() => {
+      isTransitioning.current = false
+    }, 1100)
+    return () => clearTimeout(timer)
   }, [activeId, isLocked])
 
   useFrame((_, delta) => {
-    // Smooth lerp for Inspect Camera transition
-    const speed = activeId ? 3.2 : 2.5
-    const t = Math.min(1, delta * speed)
+    if (isTransitioning.current) {
+      const speed = activeId ? 3.8 : 2.8
+      const t = Math.min(1, delta * speed)
 
-    camera.position.lerp(targetCamPos.current, t)
+      camera.position.lerp(targetCamPos.current, t)
 
-    if (controlsRef.current) {
-      controlsRef.current.target.lerp(targetLookAt.current, t)
-      controlsRef.current.update()
+      if (controlsRef.current) {
+        controlsRef.current.target.lerp(targetLookAt.current, t)
+        controlsRef.current.update()
+      }
     }
   })
 
@@ -79,8 +109,46 @@ function Wall({ position, scale }: { position: [number, number, number]; scale: 
   return (
     <mesh position={position} castShadow receiveShadow>
       <boxGeometry args={scale} />
-      <meshStandardMaterial color="#c4b8a5" roughness={0.7} metalness={0.05} />
+      <meshStandardMaterial color="#2d3238" roughness={0.7} metalness={0.1} />
     </mesh>
+  )
+}
+
+function ColumnPost({ position }: { position: [number, number, number] }) {
+  return (
+    <group position={position}>
+      {/* Base */}
+      <mesh position={[0, 0.15, 0]} castShadow material={new THREE.MeshStandardMaterial({ color: '#e5b83b', metalness: 0.85, roughness: 0.2 })}>
+        <boxGeometry args={[0.7, 0.3, 0.7]} />
+      </mesh>
+      {/* Column shaft */}
+      <mesh position={[0, 1.4, 0]} castShadow material={new THREE.MeshStandardMaterial({ color: '#d9cdb8', roughness: 0.5 })}>
+        <cylinderGeometry args={[0.26, 0.28, 2.3, 20]} />
+      </mesh>
+      {/* Capital */}
+      <mesh position={[0, 2.5, 0]} castShadow material={new THREE.MeshStandardMaterial({ color: '#e5b83b', metalness: 0.85, roughness: 0.2 })}>
+        <boxGeometry args={[0.65, 0.2, 0.65]} />
+      </mesh>
+    </group>
+  )
+}
+
+function VelvetStanchion({ position }: { position: [number, number, number] }) {
+  return (
+    <group position={position}>
+      {/* Brass Base */}
+      <mesh position={[0, 0.04, 0]} castShadow material={new THREE.MeshStandardMaterial({ color: '#e5b83b', metalness: 0.9, roughness: 0.2 })}>
+        <cylinderGeometry args={[0.12, 0.14, 0.08, 16]} />
+      </mesh>
+      {/* Brass Post */}
+      <mesh position={[0, 0.42, 0]} castShadow material={new THREE.MeshStandardMaterial({ color: '#e5b83b', metalness: 0.9, roughness: 0.2 })}>
+        <cylinderGeometry args={[0.022, 0.022, 0.72, 12]} />
+      </mesh>
+      {/* Brass Ball Top */}
+      <mesh position={[0, 0.8, 0]} castShadow material={new THREE.MeshStandardMaterial({ color: '#e5b83b', metalness: 0.92, roughness: 0.15 })}>
+        <sphereGeometry args={[0.045, 12, 10]} />
+      </mesh>
+    </group>
   )
 }
 
@@ -92,121 +160,43 @@ function RoomLabel({ position, children }: { position: [number, number, number];
   )
 }
 
-function Artifact({ kind }: { kind: Exhibit['kind'] }) {
-  if (kind === 'statue') {
+function Artifact({ exhibit }: { exhibit: Exhibit }) {
+  if (exhibit.modelPath) {
     return (
-      <group position={[0, 0.62, 0]}>
-        <mesh position={[0, 0.7, 0]} castShadow>
-          <capsuleGeometry args={[0.28, 0.9, 6, 12]} />
-          <meshStandardMaterial color="#b8860b" metalness={0.4} roughness={0.35} />
-        </mesh>
-        <mesh position={[0, 1.38, 0]} castShadow>
-          <sphereGeometry args={[0.31, 20, 20]} />
-          <meshStandardMaterial color="#b8860b" metalness={0.4} roughness={0.35} />
-        </mesh>
+      <group position={[0, 0.32 + (exhibit.modelOffsetY ?? 0), 0]}>
+        <GLBArtifact
+          path={exhibit.modelPath}
+          texturePath={exhibit.texturePath}
+          targetHeight={exhibit.targetHeight ?? 1.6}
+          rotation={exhibit.rotation ?? [0, exhibit.rotationY ?? 0, 0]}
+        />
       </group>
     )
   }
 
-  if (kind === 'sandals') {
-    return (
-      <group position={[0, 0.54, 0]} rotation={[0, -0.2, 0]}>
-        {[-0.2, 0.2].map((x, i) => (
-          <group key={x} position={[x, 0, i === 0 ? 0.08 : -0.05]} rotation={[0, i === 0 ? -0.18 : 0.18, 0]}>
-            <mesh castShadow>
-              <boxGeometry args={[0.22, 0.055, 0.72]} />
-              <meshStandardMaterial color="#252423" roughness={0.95} />
-            </mesh>
-            <mesh position={[0, 0.09, 0.05]} rotation={[0.4, 0, 0]}>
-              <torusGeometry args={[0.11, 0.025, 8, 18, Math.PI]} />
-              <meshStandardMaterial color="#34312e" />
-            </mesh>
-          </group>
-        ))}
-      </group>
-    )
+  const models: Record<string, React.ReactNode> = {
+    statue: <StatueArtifact />,
+    bust: <StatueArtifact />,
+    heritage: <HeritageArtifact />,
+    document: <DocumentsArtifact />,
+    sandals: <SandalsArtifact />,
+    silk: <ClothingArtifact />,
+    clothing: <ClothingArtifact />,
+    memorial: <MemorialArtifact />,
+    emblem: <EmblemArtifact />,
   }
+  return <>{models[exhibit.kind] || <StatueArtifact />}</>
+}
 
-  if (kind === 'document') {
-    return (
-      <group position={[0, 0.6, 0]} rotation={[-0.18, 0.1, 0]}>
-        <mesh castShadow>
-          <boxGeometry args={[0.95, 0.06, 0.72]} />
-          <meshStandardMaterial color="#e7d3a9" roughness={0.8} />
-        </mesh>
-        {[0.18, 0.04, -0.1].map((z) => (
-          <mesh key={z} position={[0, 0.035, z]}>
-            <boxGeometry args={[0.62, 0.01, 0.025]} />
-            <meshBasicMaterial color="#866f54" />
-          </mesh>
-        ))}
-      </group>
-    )
-  }
-
-  if (kind === 'clothing') {
-    return (
-      <group position={[0, 0.78, 0]}>
-        <mesh castShadow>
-          <boxGeometry args={[0.8, 0.9, 0.12]} />
-          <meshStandardMaterial color="#b7ad86" roughness={0.9} />
-        </mesh>
-        <mesh position={[0, -0.63, 0]} castShadow>
-          <boxGeometry args={[0.64, 0.42, 0.12]} />
-          <meshStandardMaterial color="#b7ad86" roughness={0.9} />
-        </mesh>
-      </group>
-    )
-  }
-
-  if (kind === 'heritage') {
-    return (
-      <group position={[0, 0.55, 0]}>
-        <mesh castShadow>
-          <boxGeometry args={[1.0, 0.12, 0.58]} />
-          <meshStandardMaterial color="#7d5134" roughness={0.9} />
-        </mesh>
-        {[-0.38, 0.38].flatMap((x) => [-0.2, 0.2].map((z) => (
-          <mesh key={`${x}-${z}`} position={[x, -0.36, z]} castShadow>
-            <boxGeometry args={[0.08, 0.7, 0.08]} />
-            <meshStandardMaterial color="#6d452f" />
-          </mesh>
-        )))}
-      </group>
-    )
-  }
-
+function RotatingArtifact({ exhibit }: { exhibit: Exhibit; active?: boolean }) {
   return (
-    <group position={[0, 0.75, 0]}>
-      <mesh castShadow rotation={[0, Math.PI / 4, 0]}>
-        <octahedronGeometry args={[0.65, 0]} />
-        <meshStandardMaterial color="#b98b54" roughness={0.48} metalness={0.22} />
-      </mesh>
+    <group>
+      <Artifact exhibit={exhibit} />
     </group>
   )
 }
 
-function RotatingArtifact({ kind, active }: { kind: Exhibit['kind']; active: boolean }) {
-  const groupRef = useRef<THREE.Group>(null)
-
-  useFrame((_, delta) => {
-    if (!groupRef.current) return
-    if (active) {
-      // Slow 360-degree rotation when being inspected
-      groupRef.current.rotation.y += delta * 0.75
-    } else {
-      // Smoothly return to default orientation
-      groupRef.current.rotation.y = THREE.MathUtils.lerp(groupRef.current.rotation.y, 0, delta * 3)
-    }
-  })
-
-  return (
-    <group ref={groupRef}>
-      <Artifact kind={kind} />
-    </group>
-  )
-}
-
+// Tiered Circular Museum Pedestal with Gold Nameplate
 function DisplayCase({ exhibit, active, visited, onNavigate }: {
   exhibit: Exhibit
   active: boolean
@@ -218,64 +208,94 @@ function DisplayCase({ exhibit, active, visited, onNavigate }: {
 
   useFrame(({ clock }) => {
     if (!markerRef.current) return
-    markerRef.current.position.y = 2.55 + Math.sin(clock.elapsedTime * 2.1 + exhibit.index) * 0.1
+    markerRef.current.position.y = 2.65 + Math.sin(clock.elapsedTime * 2.1 + exhibit.index) * 0.1
     markerRef.current.rotation.y += 0.012
   })
 
+  const appDir = useMemo(() => {
+    const dx = exhibit.approach[0] - exhibit.position[0]
+    const dz = exhibit.approach[1] - exhibit.position[2]
+    const len = Math.hypot(dx, dz) || 1
+    const angle = Math.atan2(dx, dz)
+    return {
+      x: (dx / len) * 1.25,
+      z: (dz / len) * 1.25,
+      angle,
+    }
+  }, [exhibit])
+
   return (
     <group position={exhibit.position}>
-      {/* Pedestal */}
-      <mesh position={[0, 0.18, 0]} receiveShadow castShadow>
-        <boxGeometry args={[2.1, 0.36, 1.55]} />
-        <meshStandardMaterial color={active ? '#963935' : '#735f4b'} roughness={0.7} />
+      {/* Tiered Circular Pedestal Base (Bục tròn phân tầng sang trọng) */}
+      {/* Tier 1: Dark Granite Foundation */}
+      <mesh position={[0, 0.07, 0]} receiveShadow castShadow material={new THREE.MeshStandardMaterial({ color: '#22272e', roughness: 0.35, metalness: 0.1 })}>
+        <cylinderGeometry args={[1.55, 1.65, 0.14, 40]} />
       </mesh>
 
-      {/* Artifact with 360 spin in inspect mode */}
-      <RotatingArtifact kind={exhibit.kind} active={active} />
-
-      {/* Glass Showcase */}
-      <mesh position={[0, 1.28, 0]} castShadow>
-        <boxGeometry args={[1.95, 1.82, 1.4]} />
-        <meshPhysicalMaterial
-          color="#e6f0ed"
-          transparent
-          opacity={active ? 0.08 : 0.2}
-          roughness={0.05}
-          transmission={0.3}
-          thickness={0.1}
-        />
+      {/* Tier 2: Mahogany Wood Ring with Flat Gold Trim Ring */}
+      <mesh position={[0, 0.18, 0]} receiveShadow castShadow material={new THREE.MeshStandardMaterial({ color: '#4a2511', roughness: 0.35 })}>
+        <cylinderGeometry args={[1.35, 1.4, 0.12, 40]} />
+      </mesh>
+      {/* Horizontal Inlaid Gold Ring (Nằm phẳng trên mặt bục gỗ, không cắt ngang hiện vật) */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.245, 0]} castShadow material={new THREE.MeshStandardMaterial({ color: '#e5b83b', metalness: 0.9, roughness: 0.18 })}>
+        <ringGeometry args={[1.32, 1.38, 48]} />
       </mesh>
 
-      {/* Inspect Highlight Ring on floor */}
+      {/* Tier 3: Velvet/Marble Core Platform */}
+      <mesh position={[0, 0.28, 0]} receiveShadow castShadow material={new THREE.MeshStandardMaterial({ color: active ? '#8a2420' : '#2d333b', roughness: 0.5 })}>
+        <cylinderGeometry args={[1.18, 1.18, 0.08, 40]} />
+      </mesh>
+
+      {/* Active Glowing Neon Ring */}
       {active && (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.015, 0]}>
-          <ringGeometry args={[1.35, 1.65, 32]} />
-          <meshBasicMaterial color="#d4af37" transparent opacity={0.75} />
+          <ringGeometry args={[1.68, 1.82, 48]} />
+          <meshBasicMaterial color="#ffd700" transparent opacity={0.88} />
         </mesh>
       )}
 
-      {/* Diamond Marker */}
-      <mesh
-        ref={markerRef}
-        position={[0, 2.55, 0]}
-        onPointerOver={(e) => { e.stopPropagation(); setHovered(true) }}
-        onPointerOut={() => setHovered(false)}
-        onClick={(e) => { e.stopPropagation(); onNavigate(exhibit) }}
-        castShadow
-      >
-        <octahedronGeometry args={[hovered || active ? 0.34 : 0.27, 0]} />
-        <meshStandardMaterial
-          color={visited ? '#d4af37' : '#963935'}
-          emissive={active ? '#d4af37' : hovered ? '#b0433e' : visited ? '#4a3d12' : '#2d0f0e'}
-        />
-      </mesh>
+      {/* Tilted Brass Nameplate hướng ra phía lối vào */}
+      <group position={[appDir.x, 0.24, appDir.z]} rotation={[0, appDir.angle, 0]}>
+        <group rotation={[-0.45, 0, 0]}>
+          <mesh castShadow material={new THREE.MeshStandardMaterial({ color: '#e5b83b', metalness: 0.92, roughness: 0.18 })}>
+            <boxGeometry args={[0.56, 0.16, 0.03]} />
+          </mesh>
+          <mesh position={[0, 0, 0.018]} material={new THREE.MeshStandardMaterial({ color: '#1a1815', roughness: 0.3 })}>
+            <planeGeometry args={[0.48, 0.1]} />
+          </mesh>
+        </group>
+      </group>
 
-      <Html position={[0, 3.15, 0]} center distanceFactor={15} style={{ pointerEvents: 'none' }}>
-        <div className={`world-tag ${active ? 'is-active' : ''}`}>
-          <span>{visited ? '✓' : String(exhibit.index).padStart(2, '0')}</span>
-          {exhibit.title}
-        </div>
-      </Html>
+      {/* Artifact with 360 Gentle Spin in Inspect Mode */}
+      <RotatingArtifact exhibit={exhibit} active={active} />
+
+      {/* Diamond / Star Marker - Ẩn khi đang inspect để không che khuất hiện vật */}
+      {!active && (
+        <mesh
+          ref={markerRef}
+          position={[0, 2.65, 0]}
+          onPointerOver={(e) => { e.stopPropagation(); setHovered(true) }}
+          onPointerOut={() => setHovered(false)}
+          onClick={(e) => { e.stopPropagation(); onNavigate(exhibit) }}
+          castShadow
+        >
+          <octahedronGeometry args={[hovered ? 0.34 : 0.27, 0]} />
+          <meshStandardMaterial
+            color={visited ? '#d4af37' : '#963935'}
+            emissive={hovered ? '#b0433e' : visited ? '#4a3d12' : '#2d0f0e'}
+          />
+        </mesh>
+      )}
+
+      {/* Floating tag badge: Chỉ hiển thị khi hover và không active để tránh đè lấp màn hình */}
+      {hovered && !active && (
+        <Html position={[0, 3.25, 0]} center distanceFactor={14} style={{ pointerEvents: 'none' }}>
+          <div className="world-tag">
+            <span>{visited ? '✓' : String(exhibit.index).padStart(2, '0')}</span>
+            {exhibit.title}
+          </div>
+        </Html>
+      )}
     </group>
   )
 }
@@ -358,7 +378,6 @@ function GuidePath({ waypoints, playerPos }: { waypoints: Point2D[]; playerPos: 
         transparent
         opacity={0.75}
       />
-      {/* Small dot at each waypoint corner */}
       {waypoints.map((wp, i) => (
         <mesh key={i} position={[wp.x, 0.04, wp.z]} rotation={[-Math.PI / 2, 0, 0]}>
           <circleGeometry args={[0.1, 16]} />
@@ -373,10 +392,12 @@ function Player({
   pathRef,
   onReached,
   onPositionUpdate,
+  visible = true,
 }: {
   pathRef: React.MutableRefObject<{ waypoints: Point2D[]; exhibitId?: string } | null>
   onReached: (id?: string) => void
   onPositionUpdate: (pos: [number, number]) => void
+  visible?: boolean
 }) {
   const root = useRef<THREE.Group>(null)
   const body = useRef<THREE.Group>(null)
@@ -397,7 +418,6 @@ function Player({
     const distance = toTarget.length()
 
     if (distance < 0.2) {
-      // Reached current waypoint, pop it
       pathData.waypoints.shift()
       if (pathData.waypoints.length === 0) {
         current.x = targetPoint.x
@@ -425,7 +445,7 @@ function Player({
   })
 
   return (
-    <group ref={root} position={[0, FLOOR_Y, 12.3]}>
+    <group ref={root} position={[0, FLOOR_Y, 12.3]} visible={visible}>
       <group ref={body}>
         <mesh position={[0, 0.86, 0]} castShadow>
           <capsuleGeometry args={[0.28, 0.65, 6, 10]} />
@@ -445,7 +465,6 @@ function Player({
         </mesh>
       </group>
 
-      {/* Ring marker under player feet */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
         <ringGeometry args={[0.38, 0.55, 28]} />
         <meshBasicMaterial color="#963935" transparent opacity={0.65} />
@@ -461,7 +480,6 @@ function MuseumWorld({ command, activeId, visited, isLocked, onArrive, onMoveAny
   const [playerPos, setPlayerPos] = useState<[number, number]>([0, 12.3])
   const [activeWaypoints, setActiveWaypoints] = useState<Point2D[]>([])
 
-  // Cleanup old pings
   useFrame(() => {
     if (pings.length > 0) {
       const now = Date.now()
@@ -472,7 +490,6 @@ function MuseumWorld({ command, activeId, visited, isLocked, onArrive, onMoveAny
     }
   })
 
-  // Handle move command from MapPanel
   useEffect(() => {
     if (!command) return
     const safeTarget = clampToWalkable(command.destination[0], command.destination[1])
@@ -484,7 +501,6 @@ function MuseumWorld({ command, activeId, visited, isLocked, onArrive, onMoveAny
     }
     setActiveWaypoints([...path])
 
-    // Add ping effect
     setPings((prev) => [
       ...prev,
       { id: Date.now(), x: safeTarget.x, z: safeTarget.z, createdAt: Date.now() },
@@ -508,6 +524,9 @@ function MuseumWorld({ command, activeId, visited, isLocked, onArrive, onMoveAny
   }
 
   const handleFloorClick = (event: ThreeEvent<PointerEvent>) => {
+    // Khóa di chuyển nhân vật khi đang trong chế độ Inspect hiện vật
+    if (activeId) return
+
     event.stopPropagation()
     onMoveAnywhere()
 
@@ -521,7 +540,6 @@ function MuseumWorld({ command, activeId, visited, isLocked, onArrive, onMoveAny
     }
     setActiveWaypoints([...path])
 
-    // Spawn LoL-style Ping indicator at clicked location
     setPings((prev) => [
       ...prev,
       { id: Date.now(), x: safeTarget.x, z: safeTarget.z, createdAt: Date.now() },
@@ -547,11 +565,12 @@ function MuseumWorld({ command, activeId, visited, isLocked, onArrive, onMoveAny
   return (
     <>
       <CameraController activeId={activeId} isLocked={isLocked} controlsRef={controlsRef} />
-      <color attach="background" args={['#e8e2d5']} />
-      <ambientLight intensity={1.2} />
+      <Environment preset="city" background={false} environmentIntensity={0.65} />
+      <color attach="background" args={['#0f1216']} />
+      <ambientLight intensity={1.1} />
       <directionalLight
         position={[18, 28, 18]}
-        intensity={1.8}
+        intensity={1.9}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-near={1}
@@ -562,18 +581,48 @@ function MuseumWorld({ command, activeId, visited, isLocked, onArrive, onMoveAny
         shadow-camera-bottom={-22}
         shadow-bias={-0.0003}
       />
-      <directionalLight position={[-14, 18, -14]} intensity={0.5} />
+      <directionalLight position={[-14, 18, -14]} intensity={0.6} color="#ffeed4" />
 
-      {/* Main floor plane */}
+      {/* Floating Golden Dust Sparkles */}
+      <Sparkles count={80} scale={[25, 8, 29]} size={4} speed={0.35} opacity={0.65} color="#ffd700" />
+
+      {/* Main Dark Granite Floor */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]} receiveShadow onPointerDown={handleFloorClick}>
         <planeGeometry args={[26, 30]} />
-        <meshStandardMaterial color="#ded5c5" roughness={0.8} />
+        <meshStandardMaterial color="#1a1e24" roughness={0.3} metalness={0.15} />
       </mesh>
 
-      {/* Central hallway carpet path */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 3.5]} receiveShadow onPointerDown={handleFloorClick}>
-        <planeGeometry args={[6.2, 20.5]} />
-        <meshStandardMaterial color="#f0e9dc" roughness={0.7} />
+      {/* Red Velvet Carpet Runner */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 2.5]} receiveShadow onPointerDown={handleFloorClick}>
+        <planeGeometry args={[4.2, 22.5]} />
+        <meshStandardMaterial color="#7f1d1d" roughness={0.88} />
+      </mesh>
+      {/* Gold Carpet Border Trims */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-2.15, 0.008, 2.5]} receiveShadow>
+        <planeGeometry args={[0.08, 22.5]} />
+        <meshStandardMaterial color="#e5b83b" metalness={0.9} roughness={0.2} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[2.15, 0.008, 2.5]} receiveShadow>
+        <planeGeometry args={[0.08, 22.5]} />
+        <meshStandardMaterial color="#e5b83b" metalness={0.9} roughness={0.2} />
+      </mesh>
+
+      {/* Branching Red Carpet to Rooms */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-6.2, 0.005, 1.5]} receiveShadow onPointerDown={handleFloorClick}>
+        <planeGeometry args={[4.5, 3.2]} />
+        <meshStandardMaterial color="#7f1d1d" roughness={0.88} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[6.2, 0.005, 1.5]} receiveShadow onPointerDown={handleFloorClick}>
+        <planeGeometry args={[4.5, 3.2]} />
+        <meshStandardMaterial color="#7f1d1d" roughness={0.88} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-6.2, 0.005, -5.2]} receiveShadow onPointerDown={handleFloorClick}>
+        <planeGeometry args={[4.5, 3.2]} />
+        <meshStandardMaterial color="#7f1d1d" roughness={0.88} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[6.2, 0.005, -5.2]} receiveShadow onPointerDown={handleFloorClick}>
+        <planeGeometry args={[4.5, 3.2]} />
+        <meshStandardMaterial color="#7f1d1d" roughness={0.88} />
       </mesh>
 
       {/* Exterior perimeter walls */}
@@ -591,14 +640,44 @@ function MuseumWorld({ command, activeId, visited, isLocked, onArrive, onMoveAny
       <Wall position={[-8.4, 1.05, -8.8]} scale={[7.5, 2.1, 0.25]} />
       <Wall position={[8.4, 1.05, -8.8]} scale={[7.5, 2.1, 0.25]} />
 
+      {/* Classical Marble Pillars with Gold Trim */}
+      <ColumnPost position={[-2.4, 0, 7.0]} />
+      <ColumnPost position={[2.4, 0, 7.0]} />
+      <ColumnPost position={[-2.4, 0, -1.9]} />
+      <ColumnPost position={[2.4, 0, -1.9]} />
+      <ColumnPost position={[-2.4, 0, -8.7]} />
+      <ColumnPost position={[2.4, 0, -8.7]} />
+
+      {/* Velvet Stanchions around Statue */}
+      <VelvetStanchion position={[-1.8, 0, 4.2]} />
+      <VelvetStanchion position={[1.8, 0, 4.2]} />
+      <VelvetStanchion position={[-1.8, 0, 7.4]} />
+      <VelvetStanchion position={[1.8, 0, 7.4]} />
+
+      {/* Red Velvet Rope Connectors */}
+      <mesh position={[0, 0.72, 4.2]} rotation={[0, 0, Math.PI / 2]} material={new THREE.MeshStandardMaterial({ color: '#8a1f1d', roughness: 0.9 })}>
+        <cylinderGeometry args={[0.018, 0.018, 3.6, 12]} />
+      </mesh>
+
+      {/* National Flag & Memorial Red Wall Backdrop */}
+      <group position={[0, 1.6, -14.2]}>
+        <mesh material={new THREE.MeshStandardMaterial({ color: '#b91c1c', roughness: 0.4 })}>
+          <boxGeometry args={[4.8, 2.6, 0.06]} />
+        </mesh>
+        <mesh position={[0, 0.35, 0.04]} material={new THREE.MeshStandardMaterial({ color: '#e5b83b', metalness: 0.9, roughness: 0.2 })}>
+          <octahedronGeometry args={[0.38, 0]} />
+        </mesh>
+      </group>
+
       {/* Room labels */}
-      <RoomLabel position={[0, 0.25, 11.4]}>LỐI VÀO</RoomLabel>
+      <RoomLabel position={[0, 0.25, 11.4]}>LỐI VÀO BẢO TÀNG</RoomLabel>
       <RoomLabel position={[0, 0.25, 4.4]}>GIAN LONG TRỌNG</RoomLabel>
-      <RoomLabel position={[-7.3, 0.25, 3.6]}>QUÊ HƯƠNG</RoomLabel>
-      <RoomLabel position={[7.3, 0.25, 3.6]}>TƯ LIỆU</RoomLabel>
-      <RoomLabel position={[-7.3, 0.25, -6.7]}>KỶ VẬT</RoomLabel>
-      <RoomLabel position={[7.3, 0.25, -6.7]}>KỶ VẬT</RoomLabel>
-      <RoomLabel position={[0, 0.25, -12.6]}>TƯỞNG NIỆM</RoomLabel>
+      <RoomLabel position={[-7.0, 0.25, 6.2]}>HOẠT ĐỘNG QUỐC TẾ</RoomLabel>
+      <RoomLabel position={[7.0, 0.25, 6.2]}>TƯ LIỆU BÚT TÍCH</RoomLabel>
+      <RoomLabel position={[-7.0, 0.25, -2.6]}>BÚT TÍCH LỊCH SỬ</RoomLabel>
+      <RoomLabel position={[7.0, 0.25, -2.6]}>KỶ VẬT ĐỜI THƯỜNG</RoomLabel>
+      <RoomLabel position={[-7.0, 0.25, -9.4]}>KỶ VẬT KHÁNG CHIẾN</RoomLabel>
+      <RoomLabel position={[0, 0.25, -12.6]}>GIAN TƯỞNG NIỆM</RoomLabel>
 
       {/* Display Cases */}
       {exhibits.map((item) => (
@@ -619,24 +698,25 @@ function MuseumWorld({ command, activeId, visited, isLocked, onArrive, onMoveAny
         <ClickMarker key={ping.id} ping={ping} />
       ))}
 
-      {/* Player character */}
+      {/* Player character - Tự động ẩn khi đang inspect hiện vật để không che chắn tầm nhìn */}
       <Player
         pathRef={pathRef}
         onReached={handleReached}
         onPositionUpdate={handlePositionUpdate}
+        visible={!activeId}
       />
 
       <OrbitControls
         ref={controlsRef}
         makeDefault
-        enableRotate={!isLocked && !activeId}
+        enableRotate={!isLocked || !!activeId}
         enablePan={!activeId}
         enableZoom={true}
         enableDamping
         dampingFactor={0.08}
-        maxPolarAngle={Math.PI / 2.15}
-        minDistance={3}
-        maxDistance={65}
+        maxPolarAngle={activeId ? Math.PI / 2.05 : Math.PI / 2.15}
+        minDistance={activeId ? 2.0 : 6}
+        maxDistance={activeId ? 6.2 : 55}
       />
     </>
   )

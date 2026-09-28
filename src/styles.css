@@ -3,7 +3,7 @@
 :root {
   font-family: 'Be Vietnam Pro', system-ui, sans-serif;
   color: #2d2924;
-  background: #eee8dd;
+  background: #0f1216;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -12,7 +12,7 @@
 html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 button { font: inherit; }
 
-.app-shell { position: relative; width: 100%; height: 100%; background: #eee8dd; }
+.app-shell { position: relative; width: 100%; height: 100%; background: #0f1216; }
 .app-shell canvas { display: block; width: 100% !important; height: 100% !important; }
 
 .topbar {
@@ -227,6 +227,54 @@ h1 { margin: 0; font-family: 'Playfair Display', serif; font-size: 17px; line-he
   background: rgba(250, 247, 239, .95);
   box-shadow: 0 24px 70px rgba(50, 35, 23, .18);
   animation: panel-in .28s ease both;
+}
+
+.exit-inspect-btn {
+  position: absolute;
+  top: 96px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(229, 184, 59, 0.45);
+  background: rgba(26, 30, 36, 0.94);
+  color: #fff8ea;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 18px rgba(229, 184, 59, 0.2);
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: panel-in 0.28s ease both;
+}
+
+.exit-inspect-btn .exit-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(229, 184, 59, 0.2);
+  color: #ffd700;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.exit-inspect-btn:hover {
+  background: #793330;
+  border-color: #ffd700;
+  transform: translateX(-50%) scale(1.06);
+  box-shadow: 0 14px 35px rgba(121, 51, 48, 0.55), 0 0 22px rgba(255, 215, 0, 0.35);
+}
+
+.exit-inspect-btn:hover .exit-icon {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
 }
 
 @keyframes panel-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
