@@ -24,17 +24,53 @@ interface Ping {
 
 const FLOOR_Y = 0
 
-function CameraSetup({ isLocked }: { isLocked: boolean }) {
+// Standard overview camera coordinates
+const DEFAULT_CAM_POS = new THREE.Vector3(18, 22, 18)
+const DEFAULT_CAM_TARGET = new THREE.Vector3(0, 0, 0)
+
+function CameraController({
+  activeId,
+  isLocked,
+  controlsRef,
+}: {
+  activeId?: string
+  isLocked: boolean
+  controlsRef: React.RefObject<any>
+}) {
   const { camera } = useThree()
-  const controlsRef = useRef<any>(null)
+  const targetCamPos = useRef(new THREE.Vector3().copy(DEFAULT_CAM_POS))
+  const targetLookAt = useRef(new THREE.Vector3().copy(DEFAULT_CAM_TARGET))
 
   useEffect(() => {
-    if (isLocked) {
-      camera.position.set(18, 22, 18)
-      camera.lookAt(0, 0, 0)
-      camera.updateProjectionMatrix()
+    if (activeId) {
+      const activeExhibit = exhibits.find((e) => e.id === activeId)
+      if (activeExhibit) {
+        // Inspect Mode: Zoom in close to exhibit with cinematic isometric angle
+        const exPos = activeExhibit.position
+        targetLookAt.current.set(exPos[0], exPos[1] + 1.1, exPos[2])
+        targetCamPos.current.set(exPos[0] + 4.2, exPos[1] + 3.2, exPos[2] + 4.8)
+      }
+    } else {
+      // Overview Mode: Return smoothly to museum overview
+      targetLookAt.current.copy(DEFAULT_CAM_TARGET)
+      if (isLocked) {
+        targetCamPos.current.copy(DEFAULT_CAM_POS)
+      }
     }
-  }, [isLocked, camera])
+  }, [activeId, isLocked])
+
+  useFrame((_, delta) => {
+    // Smooth lerp for Inspect Camera transition
+    const speed = activeId ? 3.2 : 2.5
+    const t = Math.min(1, delta * speed)
+
+    camera.position.lerp(targetCamPos.current, t)
+
+    if (controlsRef.current) {
+      controlsRef.current.target.lerp(targetLookAt.current, t)
+      controlsRef.current.update()
+    }
+  })
 
   return null
 }
@@ -150,6 +186,27 @@ function Artifact({ kind }: { kind: Exhibit['kind'] }) {
   )
 }
 
+function RotatingArtifact({ kind, active }: { kind: Exhibit['kind']; active: boolean }) {
+  const groupRef = useRef<THREE.Group>(null)
+
+  useFrame((_, delta) => {
+    if (!groupRef.current) return
+    if (active) {
+      // Slow 360-degree rotation when being inspected
+      groupRef.current.rotation.y += delta * 0.75
+    } else {
+      // Smoothly return to default orientation
+      groupRef.current.rotation.y = THREE.MathUtils.lerp(groupRef.current.rotation.y, 0, delta * 3)
+    }
+  })
+
+  return (
+    <group ref={groupRef}>
+      <Artifact kind={kind} />
+    </group>
+  )
+}
+
 function DisplayCase({ exhibit, active, visited, onNavigate }: {
   exhibit: Exhibit
   active: boolean
@@ -167,22 +224,37 @@ function DisplayCase({ exhibit, active, visited, onNavigate }: {
 
   return (
     <group position={exhibit.position}>
+      {/* Pedestal */}
       <mesh position={[0, 0.18, 0]} receiveShadow castShadow>
         <boxGeometry args={[2.1, 0.36, 1.55]} />
         <meshStandardMaterial color={active ? '#963935' : '#735f4b'} roughness={0.7} />
       </mesh>
-      <Artifact kind={exhibit.kind} />
+
+      {/* Artifact with 360 spin in inspect mode */}
+      <RotatingArtifact kind={exhibit.kind} active={active} />
+
+      {/* Glass Showcase */}
       <mesh position={[0, 1.28, 0]} castShadow>
         <boxGeometry args={[1.95, 1.82, 1.4]} />
         <meshPhysicalMaterial
           color="#e6f0ed"
           transparent
-          opacity={0.2}
+          opacity={active ? 0.08 : 0.2}
           roughness={0.05}
           transmission={0.3}
           thickness={0.1}
         />
       </mesh>
+
+      {/* Inspect Highlight Ring on floor */}
+      {active && (
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.015, 0]}>
+          <ringGeometry args={[1.35, 1.65, 32]} />
+          <meshBasicMaterial color="#d4af37" transparent opacity={0.75} />
+        </mesh>
+      )}
+
+      {/* Diamond Marker */}
       <mesh
         ref={markerRef}
         position={[0, 2.55, 0]}
@@ -191,12 +263,13 @@ function DisplayCase({ exhibit, active, visited, onNavigate }: {
         onClick={(e) => { e.stopPropagation(); onNavigate(exhibit) }}
         castShadow
       >
-        <octahedronGeometry args={[hovered ? 0.34 : 0.27, 0]} />
+        <octahedronGeometry args={[hovered || active ? 0.34 : 0.27, 0]} />
         <meshStandardMaterial
           color={visited ? '#d4af37' : '#963935'}
-          emissive={hovered ? '#b0433e' : visited ? '#4a3d12' : '#2d0f0e'}
+          emissive={active ? '#d4af37' : hovered ? '#b0433e' : visited ? '#4a3d12' : '#2d0f0e'}
         />
       </mesh>
+
       <Html position={[0, 3.15, 0]} center distanceFactor={15} style={{ pointerEvents: 'none' }}>
         <div className={`world-tag ${active ? 'is-active' : ''}`}>
           <span>{visited ? '✓' : String(exhibit.index).padStart(2, '0')}</span>
@@ -382,6 +455,7 @@ function Player({
 }
 
 function MuseumWorld({ command, activeId, visited, isLocked, onArrive, onMoveAnywhere }: Props) {
+  const controlsRef = useRef<any>(null)
   const pathRef = useRef<{ waypoints: Point2D[]; exhibitId?: string } | null>(null)
   const [pings, setPings] = useState<Ping[]>([])
   const [playerPos, setPlayerPos] = useState<[number, number]>([0, 12.3])
@@ -472,7 +546,7 @@ function MuseumWorld({ command, activeId, visited, isLocked, onArrive, onMoveAny
 
   return (
     <>
-      <CameraSetup isLocked={isLocked} />
+      <CameraController activeId={activeId} isLocked={isLocked} controlsRef={controlsRef} />
       <color attach="background" args={['#e8e2d5']} />
       <ambientLight intensity={1.2} />
       <directionalLight
@@ -553,14 +627,15 @@ function MuseumWorld({ command, activeId, visited, isLocked, onArrive, onMoveAny
       />
 
       <OrbitControls
+        ref={controlsRef}
         makeDefault
-        enableRotate={!isLocked}
-        enablePan={true}
+        enableRotate={!isLocked && !activeId}
+        enablePan={!activeId}
         enableZoom={true}
         enableDamping
         dampingFactor={0.08}
         maxPolarAngle={Math.PI / 2.15}
-        minDistance={8}
+        minDistance={3}
         maxDistance={65}
       />
     </>
