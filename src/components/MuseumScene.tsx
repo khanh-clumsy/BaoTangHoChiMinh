@@ -1,28 +1,40 @@
-import { Html, OrbitControls } from '@react-three/drei'
+import { Html, Line, OrbitControls } from '@react-three/drei'
 import { Canvas, ThreeEvent, useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { exhibits } from '../data/exhibits'
 import type { Exhibit, MoveCommand } from '../types'
+import { clampToWalkable, findPath, Point2D } from '../utils/pathfinding'
 
 type Props = {
   command?: MoveCommand
   activeId?: string
   visited: Set<string>
+  isLocked: boolean
   onArrive: (exhibit: Exhibit) => void
   onMoveAnywhere: () => void
 }
 
+interface Ping {
+  id: number
+  x: number
+  z: number
+  createdAt: number
+}
+
 const FLOOR_Y = 0
 
-function CameraSetup() {
+function CameraSetup({ isLocked }: { isLocked: boolean }) {
   const { camera } = useThree()
+  const controlsRef = useRef<any>(null)
 
   useEffect(() => {
-    camera.position.set(18, 22, 18)
-    camera.lookAt(0, 0, 0)
-    camera.updateProjectionMatrix()
-  }, [camera])
+    if (isLocked) {
+      camera.position.set(18, 22, 18)
+      camera.lookAt(0, 0, 0)
+      camera.updateProjectionMatrix()
+    }
+  }, [isLocked, camera])
 
   return null
 }
@@ -195,9 +207,103 @@ function DisplayCase({ exhibit, active, visited, onNavigate }: {
   )
 }
 
-function Player({ targetRef, onReached }: {
-  targetRef: React.MutableRefObject<{ point: THREE.Vector3; exhibitId?: string } | null>
+// LoL Style Click Indicator (Cross marker + pulse ripple effect)
+function ClickMarker({ ping }: { ping: Ping }) {
+  const meshRef = useRef<THREE.Group>(null)
+  const ringRef = useRef<THREE.Mesh>(null)
+  const [opacity, setOpacity] = useState(1)
+
+  useFrame(() => {
+    const elapsed = (Date.now() - ping.createdAt) / 1000
+    if (elapsed > 0.6) {
+      setOpacity(0)
+      return
+    }
+    const progress = elapsed / 0.6
+    setOpacity(1 - progress)
+
+    if (ringRef.current) {
+      const scale = 0.4 + progress * 0.8
+      ringRef.current.scale.set(scale, scale, scale)
+    }
+  })
+
+  if (opacity <= 0.01) return null
+
+  return (
+    <group ref={meshRef} position={[ping.x, 0.03, ping.z]}>
+      {/* Expanding Ripple Ring */}
+      <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.4, 0.52, 32]} />
+        <meshBasicMaterial color="#22c55e" transparent opacity={opacity * 0.8} />
+      </mesh>
+
+      {/* Cross Marker / X like LoL */}
+      <group rotation={[0, Math.PI / 4, 0]}>
+        <mesh rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[0.5, 0.08]} />
+          <meshBasicMaterial color="#4ade80" transparent opacity={opacity} />
+        </mesh>
+        <mesh rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[0.08, 0.5]} />
+          <meshBasicMaterial color="#4ade80" transparent opacity={opacity} />
+        </mesh>
+      </group>
+
+      {/* Center glowing diamond */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.08, 0.16, 4]} />
+        <meshBasicMaterial color="#86efac" transparent opacity={opacity} />
+      </mesh>
+    </group>
+  )
+}
+
+// Dotted/Glowing Guide Path Line from player to destination
+function GuidePath({ waypoints, playerPos }: { waypoints: Point2D[]; playerPos: [number, number] }) {
+  const points = useMemo(() => {
+    if (waypoints.length === 0) return []
+    const pts: [number, number, number][] = [[playerPos[0], 0.04, playerPos[1]]]
+    for (const wp of waypoints) {
+      pts.push([wp.x, 0.04, wp.z])
+    }
+    return pts
+  }, [waypoints, playerPos])
+
+  if (points.length < 2) return null
+
+  return (
+    <group>
+      <Line
+        points={points}
+        color="#22c55e"
+        lineWidth={3}
+        dashed
+        dashScale={2}
+        dashSize={0.4}
+        gapSize={0.2}
+        transparent
+        opacity={0.75}
+      />
+      {/* Small dot at each waypoint corner */}
+      {waypoints.map((wp, i) => (
+        <mesh key={i} position={[wp.x, 0.04, wp.z]} rotation={[-Math.PI / 2, 0, 0]}>
+          <circleGeometry args={[0.1, 16]} />
+          <meshBasicMaterial color="#4ade80" transparent opacity={0.8} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+function Player({
+  pathRef,
+  onReached,
+  onPositionUpdate,
+}: {
+  pathRef: React.MutableRefObject<{ waypoints: Point2D[]; exhibitId?: string } | null>
   onReached: (id?: string) => void
+  onPositionUpdate: (pos: [number, number]) => void
 }) {
   const root = useRef<THREE.Group>(null)
   const body = useRef<THREE.Group>(null)
@@ -206,35 +312,43 @@ function Player({ targetRef, onReached }: {
 
   useFrame(({ clock }, delta) => {
     if (!root.current) return
-    const target = targetRef.current
-    if (!target) {
+    const pathData = pathRef.current
+    if (!pathData || pathData.waypoints.length === 0) {
       if (body.current) body.current.position.y = 0
       return
     }
 
     const current = root.current.position
-    const toTarget = velocity.set(target.point.x - current.x, 0, target.point.z - current.z)
+    const targetPoint = pathData.waypoints[0]
+    const toTarget = velocity.set(targetPoint.x - current.x, 0, targetPoint.z - current.z)
     const distance = toTarget.length()
 
-    if (distance < 0.16) {
-      current.x = target.point.x
-      current.z = target.point.z
-      if (target.exhibitId !== lastReached.current) {
-        lastReached.current = target.exhibitId
-        onReached(target.exhibitId)
+    if (distance < 0.2) {
+      // Reached current waypoint, pop it
+      pathData.waypoints.shift()
+      if (pathData.waypoints.length === 0) {
+        current.x = targetPoint.x
+        current.z = targetPoint.z
+        if (pathData.exhibitId !== lastReached.current) {
+          lastReached.current = pathData.exhibitId
+          onReached(pathData.exhibitId)
+        }
+        pathRef.current = null
+        if (body.current) body.current.position.y = 0
+        onPositionUpdate([current.x, current.z])
+        return
       }
-      targetRef.current = null
-      if (body.current) body.current.position.y = 0
-      return
     }
 
     lastReached.current = undefined
-    const speed = Math.min(4.3, Math.max(2.3, distance * 2.0))
+    const speed = Math.min(4.8, Math.max(2.6, distance * 2.2))
     const step = Math.min(distance, speed * delta)
     toTarget.normalize()
     current.addScaledVector(toTarget, step)
     root.current.rotation.y = Math.atan2(toTarget.x, toTarget.z)
-    if (body.current) body.current.position.y = Math.abs(Math.sin(clock.elapsedTime * 8)) * 0.045
+    if (body.current) body.current.position.y = Math.abs(Math.sin(clock.elapsedTime * 9)) * 0.045
+
+    onPositionUpdate([current.x, current.z])
   })
 
   return (
@@ -257,47 +371,108 @@ function Player({ targetRef, onReached }: {
           <meshStandardMaterial color="#1f252b" />
         </mesh>
       </group>
+
+      {/* Ring marker under player feet */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
         <ringGeometry args={[0.38, 0.55, 28]} />
-        <meshBasicMaterial color="#963935" transparent opacity={0.6} />
+        <meshBasicMaterial color="#963935" transparent opacity={0.65} />
       </mesh>
     </group>
   )
 }
 
-function MuseumWorld({ command, activeId, visited, onArrive, onMoveAnywhere }: Props) {
-  const targetRef = useRef<{ point: THREE.Vector3; exhibitId?: string } | null>(null)
+function MuseumWorld({ command, activeId, visited, isLocked, onArrive, onMoveAnywhere }: Props) {
+  const pathRef = useRef<{ waypoints: Point2D[]; exhibitId?: string } | null>(null)
+  const [pings, setPings] = useState<Ping[]>([])
+  const [playerPos, setPlayerPos] = useState<[number, number]>([0, 12.3])
+  const [activeWaypoints, setActiveWaypoints] = useState<Point2D[]>([])
 
+  // Cleanup old pings
+  useFrame(() => {
+    if (pings.length > 0) {
+      const now = Date.now()
+      const filtered = pings.filter((p) => now - p.createdAt < 700)
+      if (filtered.length !== pings.length) {
+        setPings(filtered)
+      }
+    }
+  })
+
+  // Handle move command from MapPanel
   useEffect(() => {
     if (!command) return
-    targetRef.current = {
-      point: new THREE.Vector3(command.destination[0], 0, command.destination[1]),
+    const safeTarget = clampToWalkable(command.destination[0], command.destination[1])
+    const path = findPath({ x: playerPos[0], z: playerPos[1] }, safeTarget)
+
+    pathRef.current = {
+      waypoints: [...path],
       exhibitId: command.exhibitId,
     }
+    setActiveWaypoints([...path])
+
+    // Add ping effect
+    setPings((prev) => [
+      ...prev,
+      { id: Date.now(), x: safeTarget.x, z: safeTarget.z, createdAt: Date.now() },
+    ])
   }, [command])
 
   const navigateToExhibit = (item: Exhibit) => {
-    targetRef.current = {
-      point: new THREE.Vector3(item.approach[0], 0, item.approach[1]),
+    const safeTarget = clampToWalkable(item.approach[0], item.approach[1])
+    const path = findPath({ x: playerPos[0], z: playerPos[1] }, safeTarget)
+
+    pathRef.current = {
+      waypoints: [...path],
       exhibitId: item.id,
     }
+    setActiveWaypoints([...path])
+
+    setPings((prev) => [
+      ...prev,
+      { id: Date.now(), x: safeTarget.x, z: safeTarget.z, createdAt: Date.now() },
+    ])
   }
 
   const handleFloorClick = (event: ThreeEvent<PointerEvent>) => {
     event.stopPropagation()
     onMoveAnywhere()
-    targetRef.current = { point: new THREE.Vector3(event.point.x, 0, event.point.z) }
+
+    const targetX = event.point.x
+    const targetZ = event.point.z
+    const safeTarget = clampToWalkable(targetX, targetZ)
+    const path = findPath({ x: playerPos[0], z: playerPos[1] }, safeTarget)
+
+    pathRef.current = {
+      waypoints: [...path],
+    }
+    setActiveWaypoints([...path])
+
+    // Spawn LoL-style Ping indicator at clicked location
+    setPings((prev) => [
+      ...prev,
+      { id: Date.now(), x: safeTarget.x, z: safeTarget.z, createdAt: Date.now() },
+    ])
   }
 
   const handleReached = (id?: string) => {
+    setActiveWaypoints([])
     if (!id) return
     const item = exhibits.find((exhibit) => exhibit.id === id)
     if (item) onArrive(item)
   }
 
+  const handlePositionUpdate = (pos: [number, number]) => {
+    setPlayerPos(pos)
+    if (pathRef.current) {
+      setActiveWaypoints([...pathRef.current.waypoints])
+    } else {
+      setActiveWaypoints([])
+    }
+  }
+
   return (
     <>
-      <CameraSetup />
+      <CameraSetup isLocked={isLocked} />
       <color attach="background" args={['#e8e2d5']} />
       <ambientLight intensity={1.2} />
       <directionalLight
@@ -315,26 +490,26 @@ function MuseumWorld({ command, activeId, visited, onArrive, onMoveAnywhere }: P
       />
       <directionalLight position={[-14, 18, -14]} intensity={0.5} />
 
-      {/* Floor */}
+      {/* Main floor plane */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]} receiveShadow onPointerDown={handleFloorClick}>
         <planeGeometry args={[26, 30]} />
         <meshStandardMaterial color="#ded5c5" roughness={0.8} />
       </mesh>
 
-      {/* Main hallway path */}
+      {/* Central hallway carpet path */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 3.5]} receiveShadow onPointerDown={handleFloorClick}>
         <planeGeometry args={[6.2, 20.5]} />
         <meshStandardMaterial color="#f0e9dc" roughness={0.7} />
       </mesh>
 
-      {/* Exterior walls */}
+      {/* Exterior perimeter walls */}
       <Wall position={[-12.5, 1.2, 0]} scale={[0.4, 2.4, 29.5]} />
       <Wall position={[12.5, 1.2, 0]} scale={[0.4, 2.4, 29.5]} />
       <Wall position={[0, 1.2, -14.5]} scale={[25, 2.4, 0.4]} />
       <Wall position={[-7.5, 1.2, 14.5]} scale={[9.8, 2.4, 0.4]} />
       <Wall position={[7.5, 1.2, 14.5]} scale={[9.8, 2.4, 0.4]} />
 
-      {/* Room interior dividers */}
+      {/* Interior room partition dividers */}
       <Wall position={[-8.4, 1.05, 6.9]} scale={[7.5, 2.1, 0.25]} />
       <Wall position={[8.4, 1.05, 6.9]} scale={[7.5, 2.1, 0.25]} />
       <Wall position={[-8.4, 1.05, -2.0]} scale={[7.5, 2.1, 0.25]} />
@@ -351,7 +526,7 @@ function MuseumWorld({ command, activeId, visited, onArrive, onMoveAnywhere }: P
       <RoomLabel position={[7.3, 0.25, -6.7]}>KỶ VẬT</RoomLabel>
       <RoomLabel position={[0, 0.25, -12.6]}>TƯỞNG NIỆM</RoomLabel>
 
-      {/* Exhibits */}
+      {/* Display Cases */}
       {exhibits.map((item) => (
         <DisplayCase
           key={item.id}
@@ -362,15 +537,31 @@ function MuseumWorld({ command, activeId, visited, onArrive, onMoveAnywhere }: P
         />
       ))}
 
-      <Player targetRef={targetRef} onReached={handleReached} />
+      {/* Guide Path Line (foot to destination) */}
+      <GuidePath waypoints={activeWaypoints} playerPos={playerPos} />
+
+      {/* LoL Click Ping indicators */}
+      {pings.map((ping) => (
+        <ClickMarker key={ping.id} ping={ping} />
+      ))}
+
+      {/* Player character */}
+      <Player
+        pathRef={pathRef}
+        onReached={handleReached}
+        onPositionUpdate={handlePositionUpdate}
+      />
 
       <OrbitControls
         makeDefault
+        enableRotate={!isLocked}
+        enablePan={true}
+        enableZoom={true}
         enableDamping
         dampingFactor={0.08}
         maxPolarAngle={Math.PI / 2.15}
-        minDistance={10}
-        maxDistance={60}
+        minDistance={8}
+        maxDistance={65}
       />
     </>
   )
