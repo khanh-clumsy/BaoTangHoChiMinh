@@ -1,4 +1,4 @@
-import { Environment, Html, Line, OrbitControls, Sparkles } from '@react-three/drei'
+import { Environment, Html, Line, OrbitControls, Sparkles, useGLTF, useAnimations } from '@react-three/drei'
 import { Canvas, ThreeEvent, useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
@@ -21,6 +21,7 @@ type Props = {
   activeId?: string
   visited: Set<string>
   isLocked: boolean
+  started: boolean
   onArrive: (exhibit: Exhibit) => void
   onMoveAnywhere: () => void
 }
@@ -38,21 +39,48 @@ const FLOOR_Y = 0
 const DEFAULT_CAM_POS = new THREE.Vector3(18, 22, 18)
 const DEFAULT_CAM_TARGET = new THREE.Vector3(0, 0, 0)
 
+const DOOR_CAM_POS = new THREE.Vector3(0, 2.2, 21.0)
+const DOOR_LOOK_AT = new THREE.Vector3(0, 1.8, 14.5)
+
 function CameraController({
   activeId,
   isLocked,
+  started,
   controlsRef,
 }: {
   activeId?: string
   isLocked: boolean
+  started: boolean
   controlsRef: React.RefObject<any>
 }) {
   const { camera } = useThree()
+  const introStartTime = useRef<number | null>(null)
+  const prevStarted = useRef(started)
   const targetCamPos = useRef(new THREE.Vector3().copy(DEFAULT_CAM_POS))
   const targetLookAt = useRef(new THREE.Vector3().copy(DEFAULT_CAM_TARGET))
   const isTransitioning = useRef(false)
 
+  // Ban đầu khi chưa bấm bắt đầu: cố định camera trước cửa
   useEffect(() => {
+    if (!started) {
+      camera.position.copy(DOOR_CAM_POS)
+      if (controlsRef.current) {
+        controlsRef.current.target.copy(DOOR_LOOK_AT)
+        controlsRef.current.update()
+      }
+    }
+  }, [started, camera, controlsRef])
+
+  // Kích hoạt chuỗi fly-in khi bấm "Bắt đầu tham quan"
+  useEffect(() => {
+    if (started && !prevStarted.current) {
+      introStartTime.current = Date.now()
+    }
+    prevStarted.current = started
+  }, [started])
+
+  useEffect(() => {
+    if (!started) return
     isTransitioning.current = true
     if (activeId) {
       const activeExhibit = exhibits.find((e) => e.id === activeId)
@@ -67,7 +95,6 @@ function CameraController({
         const normX = dirX / len
         const normZ = dirZ / len
 
-        // Đặt camera lùi ra 3.6m trực diện phía trước hiện vật (hướng ra lối đi), độ cao Y = 1.35m
         targetCamPos.current.set(
           exPos[0] + normX * 3.6,
           exPos[1] + 1.35,
@@ -84,19 +111,82 @@ function CameraController({
 
     const timer = setTimeout(() => {
       isTransitioning.current = false
-    }, 1100)
+    }, 2500)
     return () => clearTimeout(timer)
-  }, [activeId, isLocked])
+  }, [activeId, isLocked, started])
 
-  useFrame((_, delta) => {
+  useFrame(() => {
+    // Nếu chưa bấm start: camera đứng yên ở trước cửa nhìn vào cánh cửa
+    if (!started) {
+      camera.position.lerp(DOOR_CAM_POS, 0.2)
+      if (controlsRef.current) {
+        controlsRef.current.target.lerp(DOOR_LOOK_AT, 0.2)
+        controlsRef.current.update()
+      }
+      return
+    }
+
+    // Cinematic Fly-in khi vừa mở cửa
+    if (introStartTime.current !== null) {
+      const elapsed = (Date.now() - introStartTime.current) / 1000
+      const totalDuration = 3.2
+
+      if (elapsed < totalDuration) {
+        const t = Math.min(1, elapsed / totalDuration)
+
+        let curX = 0
+        let curY = 2.2
+        let curZ = 21.0
+        let tgtX = 0
+        let tgtY = 1.8
+        let tgtZ = 14.5
+
+        if (t < 0.42) {
+          // Giai đoạn 1: Cửa mở, camera lướt thẳng qua cánh cửa vào sảnh
+          const subT = t / 0.42
+          const ease1 = subT * subT * (3 - 2 * subT)
+          curX = 0
+          curY = 2.2 - ease1 * 0.3
+          curZ = 21.0 - ease1 * 8.2 // 21.0 -> 12.8 (vượt qua cửa)
+          tgtX = 0
+          tgtY = 1.8 - ease1 * 0.4
+          tgtZ = 14.5 - ease1 * 6.5
+        } else {
+          // Giai đoạn 2: Camera từ sảnh bay vút lên góc nhìn Isometric 2.5D
+          const subT = (t - 0.42) / 0.58
+          const ease2 = subT * subT * (3 - 2 * subT)
+          curX = 0 + ease2 * DEFAULT_CAM_POS.x
+          curY = 1.9 + ease2 * (DEFAULT_CAM_POS.y - 1.9)
+          curZ = 12.8 + ease2 * (DEFAULT_CAM_POS.z - 12.8)
+          tgtX = 0
+          tgtY = 1.4 - ease2 * 1.4
+          tgtZ = 8.0 - ease2 * 8.0
+        }
+
+        camera.position.set(curX, curY, curZ)
+        if (controlsRef.current) {
+          controlsRef.current.target.set(tgtX, tgtY, tgtZ)
+          controlsRef.current.update()
+        }
+        return
+      } else {
+        introStartTime.current = null
+        camera.position.copy(DEFAULT_CAM_POS)
+        if (controlsRef.current) {
+          controlsRef.current.target.copy(DEFAULT_CAM_TARGET)
+          controlsRef.current.update()
+        }
+      }
+    }
+
     if (isTransitioning.current) {
-      const speed = activeId ? 3.8 : 2.8
-      const t = Math.min(1, delta * speed)
-
-      camera.position.lerp(targetCamPos.current, t)
+      const speed = activeId ? 0.05 : 0.02
+      if (!(!isLocked && !activeId && started)) {
+        camera.position.lerp(targetCamPos.current, speed)
+      }
 
       if (controlsRef.current) {
-        controlsRef.current.target.lerp(targetLookAt.current, t)
+        controlsRef.current.target.lerp(targetLookAt.current, speed)
         controlsRef.current.update()
       }
     }
@@ -473,7 +563,57 @@ function Player({
   )
 }
 
-function MuseumWorld({ command, activeId, visited, isLocked, onArrive, onMoveAnywhere }: Props) {
+function IntroDoor({ started }: { started: boolean }) {
+  const group = useRef<THREE.Group>(null)
+  const { scene, animations } = useGLTF('/models/psx_indian_door.glb')
+  const { actions } = useAnimations(animations, group)
+
+  // Căn giữa chính xác và tính tỷ lệ để cửa vừa khít cổng vòm (rộng ~3.6m, cao ~3.6m)
+  const { scale, centerOffset } = useMemo(() => {
+    const box = new THREE.Box3().setFromObject(scene)
+    const size = new THREE.Vector3()
+    const center = new THREE.Vector3()
+    box.getSize(size)
+    box.getCenter(center)
+
+    // Khẩu độ cổng vào rộng 3.6m
+    const targetW = 3.6
+    const s = size.x > 0 ? targetW / size.x : 0.28
+
+    return {
+      scale: s,
+      centerOffset: new THREE.Vector3(
+        -center.x * s,
+        -box.min.y * s,
+        -center.z * s
+      ),
+    }
+  }, [scene])
+
+  useEffect(() => {
+    if (started && actions) {
+      const action = actions['Take 001'] || Object.values(actions)[0]
+      if (action) {
+        action.reset()
+        action.setLoop(THREE.LoopOnce, 1)
+        action.clampWhenFinished = true
+        action.timeScale = 0.8
+        action.play()
+      }
+    }
+  }, [started, actions])
+
+  return (
+    <group ref={group} position={[0, 0, 14.5]}>
+      <group position={[centerOffset.x, centerOffset.y, centerOffset.z]} scale={[scale, scale, scale]}>
+        <primitive object={scene} />
+      </group>
+    </group>
+  )
+}
+useGLTF.preload('/models/psx_indian_door.glb')
+
+function MuseumWorld({ command, activeId, visited, isLocked, started, onArrive, onMoveAnywhere }: Props) {
   const controlsRef = useRef<any>(null)
   const pathRef = useRef<{ waypoints: Point2D[]; exhibitId?: string } | null>(null)
   const [pings, setPings] = useState<Ping[]>([])
@@ -564,7 +704,7 @@ function MuseumWorld({ command, activeId, visited, isLocked, onArrive, onMoveAny
 
   return (
     <>
-      <CameraController activeId={activeId} isLocked={isLocked} controlsRef={controlsRef} />
+      <CameraController activeId={activeId} isLocked={isLocked} started={started} controlsRef={controlsRef} />
       <Environment preset="city" background={false} environmentIntensity={0.65} />
       <color attach="background" args={['#0f1216']} />
       <ambientLight intensity={1.1} />
@@ -625,12 +765,51 @@ function MuseumWorld({ command, activeId, visited, isLocked, onArrive, onMoveAny
         <meshStandardMaterial color="#7f1d1d" roughness={0.88} />
       </mesh>
 
-      {/* Exterior perimeter walls */}
+      {/* Cánh cửa Intro */}
+      <IntroDoor started={started} />
+
+      {/* Sân trước sảnh bảo tàng (Outdoor Entrance Plaza) */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 19.5]} receiveShadow>
+        <planeGeometry args={[14, 10]} />
+        <meshStandardMaterial color="#1a1e24" roughness={0.35} metalness={0.15} />
+      </mesh>
+      {/* Thảm đỏ ngoài sân dẫn thẳng vào cánh cửa */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.04, 19.5]} receiveShadow>
+        <planeGeometry args={[3.2, 10]} />
+        <meshStandardMaterial color="#7f1d1d" roughness={0.88} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-1.64, -0.038, 19.5]} receiveShadow>
+        <planeGeometry args={[0.08, 10]} />
+        <meshStandardMaterial color="#e5b83b" metalness={0.9} roughness={0.2} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[1.64, -0.038, 19.5]} receiveShadow>
+        <planeGeometry args={[0.08, 10]} />
+        <meshStandardMaterial color="#e5b83b" metalness={0.9} roughness={0.2} />
+      </mesh>
+
+      {/* Đèn rọi chiếu sáng mặt tiền cánh cửa bảo tàng */}
+      <spotLight
+        position={[0, 5.5, 19.0]}
+        target-position={[0, 1.8, 14.5]}
+        intensity={7.0}
+        angle={0.68}
+        penumbra={0.6}
+        color="#fff1d6"
+        castShadow
+      />
+
+      {/* Cặp cột đá cẩm thạch hai bên cổng vòm lối vào */}
+      <ColumnPost position={[-1.95, 0, 14.6]} />
+      <ColumnPost position={[1.95, 0, 14.6]} />
+      <ColumnPost position={[-2.4, 0, 20.5]} />
+      <ColumnPost position={[2.4, 0, 20.5]} />
+
+      {/* Tường bao ngoài bảo tàng */}
       <Wall position={[-12.5, 1.2, 0]} scale={[0.4, 2.4, 29.5]} />
       <Wall position={[12.5, 1.2, 0]} scale={[0.4, 2.4, 29.5]} />
       <Wall position={[0, 1.2, -14.5]} scale={[25, 2.4, 0.4]} />
-      <Wall position={[-7.5, 1.2, 14.5]} scale={[9.8, 2.4, 0.4]} />
-      <Wall position={[7.5, 1.2, 14.5]} scale={[9.8, 2.4, 0.4]} />
+      <Wall position={[-7.1, 1.5, 14.5]} scale={[10.6, 3.0, 0.4]} />
+      <Wall position={[7.1, 1.5, 14.5]} scale={[10.6, 3.0, 0.4]} />
 
       {/* Interior room partition dividers */}
       <Wall position={[-8.4, 1.05, 6.9]} scale={[7.5, 2.1, 0.25]} />
@@ -669,15 +848,19 @@ function MuseumWorld({ command, activeId, visited, isLocked, onArrive, onMoveAny
         </mesh>
       </group>
 
-      {/* Room labels */}
-      <RoomLabel position={[0, 0.25, 11.4]}>LỐI VÀO BẢO TÀNG</RoomLabel>
-      <RoomLabel position={[0, 0.25, 4.4]}>GIAN LONG TRỌNG</RoomLabel>
-      <RoomLabel position={[-7.0, 0.25, 6.2]}>HOẠT ĐỘNG QUỐC TẾ</RoomLabel>
-      <RoomLabel position={[7.0, 0.25, 6.2]}>TƯ LIỆU BÚT TÍCH</RoomLabel>
-      <RoomLabel position={[-7.0, 0.25, -2.6]}>BÚT TÍCH LỊCH SỬ</RoomLabel>
-      <RoomLabel position={[7.0, 0.25, -2.6]}>KỶ VẬT ĐỜI THƯỜNG</RoomLabel>
-      <RoomLabel position={[-7.0, 0.25, -9.4]}>KỶ VẬT KHÁNG CHIẾN</RoomLabel>
-      <RoomLabel position={[0, 0.25, -12.6]}>GIAN TƯỞNG NIỆM</RoomLabel>
+      {/* Room labels - Chỉ hiện khi đã vào trong bảo tàng */}
+      {started && (
+        <>
+          <RoomLabel position={[0, 0.25, 11.4]}>LỐI VÀO BẢO TÀNG</RoomLabel>
+          <RoomLabel position={[0, 0.25, 4.4]}>GIAN LONG TRỌNG</RoomLabel>
+          <RoomLabel position={[-7.0, 0.25, 6.2]}>HOẠT ĐỘNG QUỐC TẾ</RoomLabel>
+          <RoomLabel position={[7.0, 0.25, 6.2]}>TƯ LIỆU BÚT TÍCH</RoomLabel>
+          <RoomLabel position={[-7.0, 0.25, -2.6]}>BÚT TÍCH LỊCH SỬ</RoomLabel>
+          <RoomLabel position={[7.0, 0.25, -2.6]}>KỶ VẬT ĐỜI THƯỜNG</RoomLabel>
+          <RoomLabel position={[-7.0, 0.25, -9.4]}>KỶ VẬT KHÁNG CHIẾN</RoomLabel>
+          <RoomLabel position={[0, 0.25, -12.6]}>GIAN TƯỞNG NIỆM</RoomLabel>
+        </>
+      )}
 
       {/* Display Cases */}
       {exhibits.map((item) => (
@@ -698,20 +881,21 @@ function MuseumWorld({ command, activeId, visited, isLocked, onArrive, onMoveAny
         <ClickMarker key={ping.id} ping={ping} />
       ))}
 
-      {/* Player character - Tự động ẩn khi đang inspect hiện vật để không che chắn tầm nhìn */}
+      {/* Player character - Tự động ẩn khi chưa bắt đầu hoặc đang inspect hiện vật */}
       <Player
         pathRef={pathRef}
         onReached={handleReached}
         onPositionUpdate={handlePositionUpdate}
-        visible={!activeId}
+        visible={started && !activeId}
       />
 
       <OrbitControls
         ref={controlsRef}
         makeDefault
-        enableRotate={!isLocked || !!activeId}
-        enablePan={!activeId}
-        enableZoom={true}
+        enabled={started}
+        enableRotate={started && (!isLocked || !!activeId)}
+        enablePan={started && !activeId}
+        enableZoom={started}
         enableDamping
         dampingFactor={0.08}
         maxPolarAngle={activeId ? Math.PI / 2.05 : Math.PI / 2.15}
@@ -727,7 +911,7 @@ export function MuseumScene(props: Props) {
     <Canvas
       shadows
       dpr={[1, 2]}
-      camera={{ position: [18, 22, 18], fov: 42, near: 0.1, far: 150 }}
+      camera={{ position: [0, 2.2, 21.0], fov: 42, near: 0.1, far: 150 }}
       gl={{ antialias: true, preserveDrawingBuffer: true }}
     >
       <MuseumWorld {...props} />

@@ -46,44 +46,49 @@ export default function App() {
         activeId={active?.id}
         visited={visited}
         isLocked={isLocked}
+        started={started}
         onArrive={handleArrive}
         onMoveAnywhere={() => setActive(undefined)}
       />
 
-      <header className="topbar">
-        <div className="brand-block">
-          <div className="brand-mark">HCM</div>
-          <div>
-            <span className="eyebrow">Interactive Museum Prototype</span>
-            <h1>Bảo tàng Hồ Chí Minh · 2.5D</h1>
+      {started && (
+        <>
+          <header className="topbar">
+            <div className="brand-block">
+              <div className="brand-mark">HCM</div>
+              <div>
+                <span className="eyebrow">Interactive Museum Prototype</span>
+                <h1>Bảo tàng Hồ Chí Minh · 2.5D</h1>
+              </div>
+            </div>
+
+            <div className="topbar-actions">
+              <button
+                className={`lock-toggle-btn ${isLocked ? 'is-locked' : 'is-unlocked'}`}
+                onClick={() => setIsLocked(!isLocked)}
+                title={isLocked ? 'Đang khóa góc nhìn cố định 2.5D. Bấm để mở xoay 3D tự do.' : 'Đang mở xoay 3D tự do. Bấm để khóa lại góc 2.5D.'}
+              >
+                <span className="lock-icon">{isLocked ? '🔒' : '🔓'}</span>
+                <span className="lock-text">{isLocked ? 'Khóa góc nhìn 2.5D' : 'Mở xoay 3D tự do'}</span>
+              </button>
+
+              <div className="progress-box">
+                <span>ĐÃ KHÁM PHÁ</span>
+                <strong>{progress}</strong>
+              </div>
+            </div>
+          </header>
+
+          <MapPanel activeId={active?.id} visited={visited} onNavigate={navigate} />
+
+          <div className="instruction-card">
+            <strong>Điều khiển</strong>
+            <span>🎯 Click xuống sàn để di chuyển (chống đi xuyên tường).</span>
+            <span>📍 Click ◇ hoặc điểm trên sơ đồ để tới hiện vật.</span>
+            <span>{isLocked ? '🔒 Góc nhìn đang cố định 2.5D.' : '🖱️ Chuột trái/phải để xoay & quan sát 3D.'}</span>
           </div>
-        </div>
-
-        <div className="topbar-actions">
-          <button
-            className={`lock-toggle-btn ${isLocked ? 'is-locked' : 'is-unlocked'}`}
-            onClick={() => setIsLocked(!isLocked)}
-            title={isLocked ? 'Đang khóa góc nhìn cố định 2.5D. Bấm để mở xoay 3D tự do.' : 'Đang mở xoay 3D tự do. Bấm để khóa lại góc 2.5D.'}
-          >
-            <span className="lock-icon">{isLocked ? '🔒' : '🔓'}</span>
-            <span className="lock-text">{isLocked ? 'Khóa góc nhìn 2.5D' : 'Mở xoay 3D tự do'}</span>
-          </button>
-
-          <div className="progress-box">
-            <span>ĐÃ KHÁM PHÁ</span>
-            <strong>{progress}</strong>
-          </div>
-        </div>
-      </header>
-
-      <MapPanel activeId={active?.id} visited={visited} onNavigate={navigate} />
-
-      <div className="instruction-card">
-        <strong>Điều khiển</strong>
-        <span>🎯 Click xuống sàn để di chuyển (chống đi xuyên tường).</span>
-        <span>📍 Click ◇ hoặc điểm trên sơ đồ để tới hiện vật.</span>
-        <span>{isLocked ? '🔒 Góc nhìn đang cố định 2.5D.' : '🖱️ Chuột trái/phải để xoay & quan sát 3D.'}</span>
-      </div>
+        </>
+      )}
 
       {active && (
         <>
@@ -106,14 +111,16 @@ export default function App() {
       {!started && (
         <section className="intro-overlay">
           <div className="intro-card">
-            <span className="eyebrow">Prototype v0.1</span>
-            <h2>Khám phá bảo tàng theo kiểu 2.5D</h2>
+            <span className="eyebrow">KHÔNG GIAN TRƯNG BÀY SỐ</span>
+            <h2>BẢO TÀNG HỒ CHÍ MINH</h2>
             <p>
-              Bấm vào điểm trên bản đồ hoặc trực tiếp trên sàn. Nhân vật sẽ tự tìm đường qua các cửa,
-              tránh tường và di chuyển tới hiện vật kèm hiệu ứng chỉ đường MOBA.
+              Chào mừng quý khách đến với không gian trải nghiệm bảo tàng tương tác 2.5D / 3D.
+              Bấm nút bên dưới để mở cánh cổng chính và bắt đầu hành trình khám phá di sản.
             </p>
-            <button onClick={() => setStarted(true)}>Bắt đầu tham quan</button>
-            <small>Đã tích hợp: Nút khóa/mở xoay góc nhìn, hiệu ứng click LoL và chống đi xuyên tường.</small>
+            <button onClick={() => setStarted(true)}>
+              🏛️ Bắt đầu tham quan
+            </button>
+            <small>✨ Trải nghiệm: Tương tác 3D mượt mà · Chống đi xuyên tường · Thuyết minh hiện vật chi tiết</small>
           </div>
         </section>
       )}
