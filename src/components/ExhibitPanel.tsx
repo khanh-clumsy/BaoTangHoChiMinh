@@ -53,14 +53,14 @@ export function ExhibitPanel({ exhibit, visited, onClose }: Props) {
         )}
 
         <div className="inspect-tip" style={{ marginTop: '14px', padding: '8px 10px', borderRadius: '8px', background: '#f5efe6', fontSize: '11px', color: '#68594b' }}>
-          💡 <em>Kéo chuột để xoay 360° hoặc cuộn chuột để zoom cực gần quan sát hiện vật.</em>
+          💡 <em>Kéo chuột để xoay 360° và cuộn chuột để phóng to / thu nhỏ hiện vật.</em>
         </div>
 
         <div className="panel-footer">
           <span className={visited ? 'visited-badge is-visited' : 'visited-badge'}>
             {visited ? '✓ Đã khám phá' : 'Chưa khám phá'}
           </span>
-          <span>ESC hoặc click sàn để đóng</span>
+          <span>Nhấn ESC hoặc nhấp ra ngoài để quay lại</span>
         </div>
       </aside>
 
@@ -100,7 +100,7 @@ export function ExhibitPanel({ exhibit, visited, onClose }: Props) {
                 <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.15em', color: '#8a735c', fontWeight: '700' }}>
                   Tư Liệu Bút Tích Lịch Sử
                 </span>
-                <h3 style={{ margin: '4px 0 0', fontFamily: 'Playfair Display, serif', fontSize: '24px', color: '#792f2c' }}>
+                <h3 style={{ margin: '4px 0 0', fontWeight: '700', fontSize: '22px', color: '#792f2c' }}>
                   {exhibit.title}
                 </h3>
               </div>

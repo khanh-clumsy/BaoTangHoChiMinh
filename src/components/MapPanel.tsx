@@ -12,10 +12,10 @@ export function MapPanel({ activeId, visited, onNavigate }: Props) {
     <div className="map-panel">
       <div className="map-heading">
         <div>
-          <span className="eyebrow">Sơ đồ prototype</span>
-          <strong>Tuyến tham quan</strong>
+          <span className="eyebrow">Sơ đồ bảo tàng</span>
+          <strong>Khu vực trưng bày</strong>
         </div>
-        <span className="map-hint">Bấm điểm để đi</span>
+        <span className="map-hint">Chọn điểm đến</span>
       </div>
       <div className="mini-map">
         <div className="mini-map-axis axis-a" />

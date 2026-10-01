@@ -1,6 +1,6 @@
 import { Environment, Html, Line, OrbitControls, Sparkles, useGLTF, useAnimations } from '@react-three/drei'
 import { Canvas, ThreeEvent, useFrame, useThree } from '@react-three/fiber'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { exhibits } from '../data/exhibits'
 import type { Exhibit, MoveCommand } from '../types'
@@ -242,11 +242,85 @@ function VelvetStanchion({ position }: { position: [number, number, number] }) {
   )
 }
 
-function RoomLabel({ position, children }: { position: [number, number, number]; children: string }) {
+function createPlaqueTexture(title: string, subtitle?: string, width = 640, height = 160): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return new THREE.CanvasTexture(canvas)
+
+  ctx.clearRect(0, 0, width, height)
+
+  // Outer background plate (Deep Mahogany / Dark Bronze)
+  const grad = ctx.createLinearGradient(0, 0, width, height)
+  grad.addColorStop(0, '#1c1512')
+  grad.addColorStop(0.5, '#281e18')
+  grad.addColorStop(1, '#15100d')
+  ctx.fillStyle = grad
+  ctx.beginPath()
+  ctx.roundRect(6, 6, width - 12, height - 12, 18)
+  ctx.fill()
+
+  // Outer Gold Inlaid Border
+  ctx.lineWidth = 3.5
+  ctx.strokeStyle = '#ffd700'
+  ctx.stroke()
+
+  // Inner Subtle Gold Border
+  ctx.lineWidth = 1.2
+  ctx.strokeStyle = 'rgba(255, 215, 0, 0.45)'
+  ctx.beginPath()
+  ctx.roundRect(14, 14, width - 28, height - 28, 12)
+  ctx.stroke()
+
+  // Title
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.font = 'bold 22px "Be Vietnam Pro", system-ui, sans-serif'
+  ctx.fillStyle = '#ffd700'
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.9)'
+  ctx.shadowBlur = 6
+  ctx.fillText(title, width / 2, subtitle ? 56 : 80)
+
+  // Subtitle
+  if (subtitle) {
+    ctx.font = '500 14px "Be Vietnam Pro", system-ui, sans-serif'
+    ctx.fillStyle = '#ded5c5'
+    ctx.shadowBlur = 4
+    ctx.fillText(subtitle, width / 2, 106)
+  }
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.anisotropy = 8
+  texture.generateMipmaps = true
+  texture.minFilter = THREE.LinearMipmapLinearFilter
+  texture.magFilter = THREE.LinearFilter
+  texture.needsUpdate = true
+  return texture
+}
+
+function RoomPlaque({
+  position,
+  title,
+  subtitle,
+  width = 3.8,
+  height = 0.95,
+  rotation = [-Math.PI / 2, 0, 0],
+}: {
+  position: [number, number, number]
+  title: string
+  subtitle?: string
+  width?: number
+  height?: number
+  rotation?: [number, number, number]
+}) {
+  const texture = useMemo(() => createPlaqueTexture(title, subtitle), [title, subtitle])
+
   return (
-    <Html position={position} center distanceFactor={14} style={{ pointerEvents: 'none' }}>
-      <div className="room-label">{children}</div>
-    </Html>
+    <mesh position={position} rotation={rotation} receiveShadow>
+      <planeGeometry args={[width, height]} />
+      <meshStandardMaterial map={texture} roughness={0.3} metalness={0.35} transparent />
+    </mesh>
   )
 }
 
@@ -390,24 +464,29 @@ function DisplayCase({ exhibit, active, visited, onNavigate }: {
   )
 }
 
-// LoL Style Click Indicator (Cross marker + pulse ripple effect)
+// Hiệu ứng vòng sóng điều hướng khi nhấp chuột (Golden navigation pulse effect)
 function ClickMarker({ ping }: { ping: Ping }) {
   const meshRef = useRef<THREE.Group>(null)
   const ringRef = useRef<THREE.Mesh>(null)
+  const innerRingRef = useRef<THREE.Mesh>(null)
   const [opacity, setOpacity] = useState(1)
 
   useFrame(() => {
     const elapsed = (Date.now() - ping.createdAt) / 1000
-    if (elapsed > 0.6) {
+    if (elapsed > 0.65) {
       setOpacity(0)
       return
     }
-    const progress = elapsed / 0.6
+    const progress = elapsed / 0.65
     setOpacity(1 - progress)
 
     if (ringRef.current) {
-      const scale = 0.4 + progress * 0.8
+      const scale = 0.3 + progress * 0.9
       ringRef.current.scale.set(scale, scale, scale)
+    }
+    if (innerRingRef.current) {
+      const innerScale = 0.2 + progress * 0.5
+      innerRingRef.current.scale.set(innerScale, innerScale, innerScale)
     }
   })
 
@@ -415,28 +494,22 @@ function ClickMarker({ ping }: { ping: Ping }) {
 
   return (
     <group ref={meshRef} position={[ping.x, 0.03, ping.z]}>
-      {/* Expanding Ripple Ring */}
+      {/* Vòng lan tỏa ánh vàng chính */}
       <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.4, 0.52, 32]} />
-        <meshBasicMaterial color="#22c55e" transparent opacity={opacity * 0.8} />
+        <ringGeometry args={[0.35, 0.45, 32]} />
+        <meshBasicMaterial color="#d4af37" transparent opacity={opacity * 0.85} />
       </mesh>
 
-      {/* Cross Marker / X like LoL */}
-      <group rotation={[0, Math.PI / 4, 0]}>
-        <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[0.5, 0.08]} />
-          <meshBasicMaterial color="#4ade80" transparent opacity={opacity} />
-        </mesh>
-        <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[0.08, 0.5]} />
-          <meshBasicMaterial color="#4ade80" transparent opacity={opacity} />
-        </mesh>
-      </group>
+      {/* Vòng sáng tâm */}
+      <mesh ref={innerRingRef} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.15, 0.22, 32]} />
+        <meshBasicMaterial color="#fbbf24" transparent opacity={opacity * 0.9} />
+      </mesh>
 
-      {/* Center glowing diamond */}
+      {/* Điểm nhấn tâm sáng */}
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.08, 0.16, 4]} />
-        <meshBasicMaterial color="#86efac" transparent opacity={opacity} />
+        <circleGeometry args={[0.07, 16]} />
+        <meshBasicMaterial color="#fffbeb" transparent opacity={opacity} />
       </mesh>
     </group>
   )
@@ -612,6 +685,11 @@ function IntroDoor({ started }: { started: boolean }) {
   )
 }
 useGLTF.preload('/models/psx_indian_door.glb')
+exhibits.forEach((item) => {
+  if (item.modelPath) {
+    useGLTF.preload(item.modelPath)
+  }
+})
 
 function MuseumWorld({ command, activeId, visited, isLocked, started, onArrive, onMoveAnywhere }: Props) {
   const controlsRef = useRef<any>(null)
@@ -848,18 +926,81 @@ function MuseumWorld({ command, activeId, visited, isLocked, started, onArrive, 
         </mesh>
       </group>
 
-      {/* Room labels - Chỉ hiện khi đã vào trong bảo tàng */}
+      {/* 3D Floor Room Signs (Được vẽ trực tiếp trên sàn WebGL, không nhìn xuyên tường, sang trọng và chính xác) */}
       {started && (
-        <>
-          <RoomLabel position={[0, 0.25, 11.4]}>LỐI VÀO BẢO TÀNG</RoomLabel>
-          <RoomLabel position={[0, 0.25, 4.4]}>GIAN LONG TRỌNG</RoomLabel>
-          <RoomLabel position={[-7.0, 0.25, 6.2]}>HOẠT ĐỘNG QUỐC TẾ</RoomLabel>
-          <RoomLabel position={[7.0, 0.25, 6.2]}>TƯ LIỆU BÚT TÍCH</RoomLabel>
-          <RoomLabel position={[-7.0, 0.25, -2.6]}>BÚT TÍCH LỊCH SỬ</RoomLabel>
-          <RoomLabel position={[7.0, 0.25, -2.6]}>KỶ VẬT ĐỜI THƯỜNG</RoomLabel>
-          <RoomLabel position={[-7.0, 0.25, -9.4]}>KỶ VẬT KHÁNG CHIẾN</RoomLabel>
-          <RoomLabel position={[0, 0.25, -12.6]}>GIAN TƯỞNG NIỆM</RoomLabel>
-        </>
+        <group>
+          {/* Lối vào & Sảnh Đón Tiếp */}
+          <RoomPlaque
+            position={[0, 0.012, 12.8]}
+            title="✦ LỐI VÀO BẢO TÀNG · SẢNH ĐÓN TIẾP ✦"
+            subtitle="Chào mừng quý khách đến với Bảo tàng Hồ Chí Minh"
+            width={4.2}
+            height={0.95}
+          />
+
+          {/* Gian Long Trọng (Tượng Bác Hồ) */}
+          <RoomPlaque
+            position={[0, 0.012, 9.8]}
+            title="★ GIAN LONG TRỌNG · TƯỢNG BÁC HỒ ★"
+            subtitle="Không gian trung tâm mở đầu hành trình di sản"
+            width={4.2}
+            height={0.95}
+          />
+
+          {/* Phòng 1: Hoạt động quốc tế */}
+          <RoomPlaque
+            position={[-7.0, 0.012, 1.8]}
+            title="✦ PHÒNG 1: HOẠT ĐỘNG QUỐC TẾ ✦"
+            subtitle="Chi bộ Đảng Pháp & Hành trình cứu nước (1920–1923)"
+            width={3.8}
+            height={0.9}
+          />
+
+          {/* Phòng 2: Tư liệu bút tích */}
+          <RoomPlaque
+            position={[7.0, 0.012, 1.8]}
+            title="✦ PHÒNG 2: TƯ LIỆU BÚT TÍCH ✦"
+            subtitle="Thư Bác Hồ gửi công nhân & Kháng chiến kiến quốc"
+            width={3.8}
+            height={0.9}
+          />
+
+          {/* Phòng 3: Bút tích lịch sử */}
+          <RoomPlaque
+            position={[-7.0, 0.012, -7.0]}
+            title="✦ PHÒNG 3: BÚT TÍCH LỊCH SỬ ✦"
+            subtitle="Thư của Bác & Các bản tuyên cáo độc lập 1945"
+            width={3.8}
+            height={0.9}
+          />
+
+          {/* Phòng 4: Kỷ vật đời thường */}
+          <RoomPlaque
+            position={[7.0, 0.012, -7.0]}
+            title="✦ PHÒNG 4: KỶ VẬT ĐỜI THƯỜNG ✦"
+            subtitle="Chiếc áo lụa nâu giản dị & Kỷ vật chiến khu Việt Bắc"
+            width={3.8}
+            height={0.9}
+          />
+
+          {/* Phòng 5: Kỷ vật kháng chiến */}
+          <RoomPlaque
+            position={[-7.0, 0.012, -13.6]}
+            title="✦ PHÒNG 5: KỶ VẬT KHÁNG CHIẾN ✦"
+            subtitle="Bộ quần áo kaki lịch sử & Kỷ vật ngoại giao 1959"
+            width={3.8}
+            height={0.9}
+          />
+
+          {/* Gian tưởng niệm */}
+          <RoomPlaque
+            position={[0, 0.012, -8.2]}
+            title="★ GIAN TƯỞNG NIỆM CHỦ TỊCH HỒ CHÍ MINH ★"
+            subtitle="Không gian tri ân Anh hùng giải phóng dân tộc"
+            width={4.4}
+            height={0.95}
+          />
+        </group>
       )}
 
       {/* Display Cases */}
@@ -876,7 +1017,7 @@ function MuseumWorld({ command, activeId, visited, isLocked, started, onArrive, 
       {/* Guide Path Line (foot to destination) */}
       <GuidePath waypoints={activeWaypoints} playerPos={playerPos} />
 
-      {/* LoL Click Ping indicators */}
+      {/* Hiệu ứng chỉ điểm khi nhấp chuột */}
       {pings.map((ping) => (
         <ClickMarker key={ping.id} ping={ping} />
       ))}
@@ -914,7 +1055,9 @@ export function MuseumScene(props: Props) {
       camera={{ position: [0, 2.2, 21.0], fov: 42, near: 0.1, far: 150 }}
       gl={{ antialias: true, preserveDrawingBuffer: true }}
     >
-      <MuseumWorld {...props} />
+      <Suspense fallback={null}>
+        <MuseumWorld {...props} />
+      </Suspense>
     </Canvas>
   )
 }

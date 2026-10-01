@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ExhibitPanel } from './components/ExhibitPanel'
+import { LoadingScreen } from './components/LoadingScreen'
 import { MapPanel } from './components/MapPanel'
 import { MuseumScene } from './components/MuseumScene'
 import { exhibits } from './data/exhibits'
@@ -12,6 +13,7 @@ export default function App() {
   const [started, setStarted] = useState(false)
   const [commandId, setCommandId] = useState(0)
   const [isLocked, setIsLocked] = useState(true)
+  const [isLoaded, setIsLoaded] = useState(false)
 
   const progress = useMemo(() => `${visited.size}/${exhibits.length}`, [visited])
 
@@ -57,8 +59,8 @@ export default function App() {
             <div className="brand-block">
               <div className="brand-mark">HCM</div>
               <div>
-                <span className="eyebrow">Interactive Museum Prototype</span>
-                <h1>Bảo tàng Hồ Chí Minh · 2.5D</h1>
+                <span className="eyebrow">Không gian trưng bày số hóa 3D</span>
+                <h1>Bảo tàng Hồ Chí Minh</h1>
               </div>
             </div>
 
@@ -66,14 +68,14 @@ export default function App() {
               <button
                 className={`lock-toggle-btn ${isLocked ? 'is-locked' : 'is-unlocked'}`}
                 onClick={() => setIsLocked(!isLocked)}
-                title={isLocked ? 'Đang khóa góc nhìn cố định 2.5D. Bấm để mở xoay 3D tự do.' : 'Đang mở xoay 3D tự do. Bấm để khóa lại góc 2.5D.'}
+                title={isLocked ? 'Góc nhìn cố định 2.5D. Bấm để chuyển sang xoay 3D tự do.' : 'Góc nhìn 3D tự do. Bấm để cố định góc nhìn 2.5D.'}
               >
                 <span className="lock-icon">{isLocked ? '🔒' : '🔓'}</span>
                 <span className="lock-text">{isLocked ? 'Khóa góc nhìn 2.5D' : 'Mở xoay 3D tự do'}</span>
               </button>
 
               <div className="progress-box">
-                <span>ĐÃ KHÁM PHÁ</span>
+                <span>TIẾN ĐỘ THAM QUAN</span>
                 <strong>{progress}</strong>
               </div>
             </div>
@@ -82,10 +84,10 @@ export default function App() {
           <MapPanel activeId={active?.id} visited={visited} onNavigate={navigate} />
 
           <div className="instruction-card">
-            <strong>Điều khiển</strong>
-            <span>🎯 Click xuống sàn để di chuyển (chống đi xuyên tường).</span>
-            <span>📍 Click ◇ hoặc điểm trên sơ đồ để tới hiện vật.</span>
-            <span>{isLocked ? '🔒 Góc nhìn đang cố định 2.5D.' : '🖱️ Chuột trái/phải để xoay & quan sát 3D.'}</span>
+            <strong>Hướng dẫn điều hướng</strong>
+            <span>🧭 Nhấp chuột xuống sàn để di chuyển nhân vật.</span>
+            <span>🏛️ Chọn hiện vật hoặc điểm trên sơ đồ để tới vị trí trưng bày.</span>
+            <span>{isLocked ? '🔒 Góc nhìn 2.5D đang được cố định.' : '🖱️ Giữ và rê chuột để xoay quan sát không gian 3D.'}</span>
           </div>
         </>
       )}
@@ -95,10 +97,10 @@ export default function App() {
           <button
             className="exit-inspect-btn"
             onClick={() => setActive(undefined)}
-            title="Bấm hoặc nhấn phím ESC để quay lại góc nhìn bảo tàng"
+            title="Bấm hoặc nhấn phím ESC để quay lại không gian bảo tàng"
           >
             <span className="exit-icon">✕</span>
-            <span>Thoát Chế Độ Xem (ESC)</span>
+            <span>Quay lại không gian (ESC)</span>
           </button>
           <ExhibitPanel
             exhibit={active}
@@ -108,22 +110,24 @@ export default function App() {
         </>
       )}
 
-      {!started && (
+      {!started && isLoaded && (
         <section className="intro-overlay">
           <div className="intro-card">
             <span className="eyebrow">KHÔNG GIAN TRƯNG BÀY SỐ</span>
             <h2>BẢO TÀNG HỒ CHÍ MINH</h2>
             <p>
-              Chào mừng quý khách đến với không gian trải nghiệm bảo tàng tương tác 2.5D / 3D.
-              Bấm nút bên dưới để mở cánh cổng chính và bắt đầu hành trình khám phá di sản.
+              Chào mừng quý khách đến với không gian trải nghiệm bảo tàng tương tác 3D.
+              Cùng bước vào hành trình tìm hiểu cuộc đời, sự nghiệp và những kỷ vật vô giá của Chủ tịch Hồ Chí Minh.
             </p>
             <button onClick={() => setStarted(true)}>
               🏛️ Bắt đầu tham quan
             </button>
-            <small>✨ Trải nghiệm: Tương tác 3D mượt mà · Chống đi xuyên tường · Thuyết minh hiện vật chi tiết</small>
+            <small>✨ Trải nghiệm: Không gian tương tác 3D chân thực · Bản đồ định tuyến thông minh · Thuyết minh hiện vật chi tiết</small>
           </div>
         </section>
       )}
+
+      {!isLoaded && <LoadingScreen onFinished={() => setIsLoaded(true)} />}
     </main>
   )
 }
