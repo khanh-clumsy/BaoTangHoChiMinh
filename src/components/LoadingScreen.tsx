@@ -6,7 +6,7 @@ interface LoadingScreenProps {
 }
 
 export function LoadingScreen({ onFinished }: LoadingScreenProps) {
-  const { active, progress, loaded, total, item } = useProgress()
+  const { active, progress, loaded, total } = useProgress()
   const [displayProgress, setDisplayProgress] = useState(0)
   const [isFadingOut, setIsFadingOut] = useState(false)
   const [isDone, setIsDone] = useState(false)
@@ -59,15 +59,10 @@ export function LoadingScreen({ onFinished }: LoadingScreenProps) {
 
   if (isDone) return null
 
-  // Format filename for readable status text
-  const currentFileName = item ? item.split('/').pop()?.replace(/\.[^/.]+$/, '').replace(/_/g, ' ') : ''
-
   const getStatusText = () => {
     if (displayProgress >= 100) return 'Không gian trưng bày đã sẵn sàng!'
     if (displayProgress >= 75) return 'Đang khởi tạo ánh sáng & không gian...'
-    if (displayProgress >= 35) {
-      return currentFileName ? `Đang nạp dữ liệu hiện vật: ${currentFileName}...` : 'Đang nạp dữ liệu hiện vật 3D...'
-    }
+    if (displayProgress >= 35) return 'Đang nạp dữ liệu hiện vật 3D...'
     return 'Đang kết nối không gian số hóa bảo tàng...'
   }
 
@@ -109,7 +104,6 @@ export function LoadingScreen({ onFinished }: LoadingScreenProps) {
 
         {/* Footer info */}
         <div className="loading-footer">
-          <span>✨ Hệ thống đang chuẩn bị không gian trưng bày và hiện vật lịch sử...</span>
         </div>
       </div>
     </div>

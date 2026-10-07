@@ -12,7 +12,8 @@ export default function App() {
   const [command, setCommand] = useState<MoveCommand | undefined>()
   const [started, setStarted] = useState(false)
   const [commandId, setCommandId] = useState(0)
-  const [isLocked, setIsLocked] = useState(true)
+  const isLocked = true
+  const [viewMode, setViewMode] = useState<'overview' | 'firstPerson'>('overview')
   const [isLoaded, setIsLoaded] = useState(false)
 
   const progress = useMemo(() => `${visited.size}/${exhibits.length}`, [visited])
@@ -21,6 +22,7 @@ export default function App() {
     const nextId = commandId + 1
     setCommandId(nextId)
     setActive(undefined)
+    setViewMode('overview')
     setCommand({ id: nextId, ...payload })
   }
 
@@ -48,9 +50,11 @@ export default function App() {
         activeId={active?.id}
         visited={visited}
         isLocked={isLocked}
+        viewMode={viewMode}
         started={started}
         onArrive={handleArrive}
         onMoveAnywhere={() => setActive(undefined)}
+        onRequestOverview={() => setViewMode('overview')}
       />
 
       {started && (
@@ -66,12 +70,12 @@ export default function App() {
 
             <div className="topbar-actions">
               <button
-                className={`lock-toggle-btn ${isLocked ? 'is-locked' : 'is-unlocked'}`}
-                onClick={() => setIsLocked(!isLocked)}
-                title={isLocked ? 'Góc nhìn cố định 2.5D. Bấm để chuyển sang xoay 3D tự do.' : 'Góc nhìn 3D tự do. Bấm để cố định góc nhìn 2.5D.'}
+                className={`lock-toggle-btn ${viewMode === 'firstPerson' ? 'is-unlocked' : 'is-locked'}`}
+                onClick={() => setViewMode((current) => current === 'firstPerson' ? 'overview' : 'firstPerson')}
+                title={viewMode === 'firstPerson' ? 'Quay lại góc nhìn toàn cảnh' : 'Chuyển sang góc nhìn thứ nhất'}
               >
-                <span className="lock-icon">{isLocked ? '🔒' : '🔓'}</span>
-                <span className="lock-text">{isLocked ? 'Khóa góc nhìn 2.5D' : 'Mở xoay 3D tự do'}</span>
+                <span className="lock-icon">{viewMode === 'firstPerson' ? '🏛️' : '👁️'}</span>
+                <span className="lock-text">{viewMode === 'firstPerson' ? 'Góc nhìn toàn cảnh' : 'Góc nhìn thứ nhất'}</span>
               </button>
 
               <div className="progress-box">
@@ -87,7 +91,7 @@ export default function App() {
             <strong>Hướng dẫn điều hướng</strong>
             <span>🧭 Nhấp chuột xuống sàn để di chuyển nhân vật.</span>
             <span>🏛️ Chọn hiện vật hoặc điểm trên sơ đồ để tới vị trí trưng bày.</span>
-            <span>{isLocked ? '🔒 Góc nhìn 2.5D đang được cố định.' : '🖱️ Giữ và rê chuột để xoay quan sát không gian 3D.'}</span>
+            <span>{viewMode === 'firstPerson' ? '⌨️ WASD để đi bộ · Nhấp vào khung cảnh để khóa chuột và xoay nhìn.' : '🖱️ Click xuống sàn để di chuyển · Map cố định; chỉ kéo để xoay khi inspect.'}</span>
           </div>
         </>
       )}
@@ -122,7 +126,6 @@ export default function App() {
             <button onClick={() => setStarted(true)}>
               🏛️ Bắt đầu tham quan
             </button>
-            <small>✨ Trải nghiệm: Không gian tương tác 3D chân thực · Bản đồ định tuyến thông minh · Thuyết minh hiện vật chi tiết</small>
           </div>
         </section>
       )}

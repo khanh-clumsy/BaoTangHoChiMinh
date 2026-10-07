@@ -15,7 +15,8 @@ interface Obstacle {
 // Map boundaries and player buffer
 const MAP_MIN_X = -12.0
 const MAP_MAX_X = 12.0
-const MAP_MIN_Z = -14.0
+// Khu hậu sảnh mở rộng cho màn chiếu và gallery ảnh tư liệu.
+const MAP_MIN_Z = -16.0
 const MAP_MAX_Z = 14.0
 const CELL_SIZE = 0.4
 const PLAYER_RADIUS = 0.45
@@ -25,31 +26,31 @@ const OBSTACLES: Obstacle[] = [
   // Outer walls (with thickness buffer)
   { minX: -13.0, maxX: -11.9, minZ: -15.0, maxZ: 15.0 }, // Left outer wall
   { minX: 11.9, maxX: 13.0, minZ: -15.0, maxZ: 15.0 },  // Right outer wall
-  { minX: -13.0, maxX: 13.0, minZ: -15.0, maxZ: -14.1 }, // Back outer wall
+  { minX: -13.0, maxX: 13.0, minZ: -17.0, maxZ: -16.1 }, // Back outer wall
   { minX: -13.0, maxX: -2.3, minZ: 14.1, maxZ: 15.0 },  // Front left entrance wall
   { minX: 2.3, maxX: 13.0, minZ: 14.1, maxZ: 15.0 },   // Front right entrance wall
 
-  // Interior room divider walls (Leaving central hallway ~[-4.2, 4.2] open)
+  // Interior room divider walls (Leaving a wider central hallway ~[-5.3, 5.3] open)
   // Wall at z = 6.9 (left & right)
-  { minX: -12.4, maxX: -4.3, minZ: 6.6, maxZ: 7.2 },
-  { minX: 4.3, maxX: 12.4, minZ: 6.6, maxZ: 7.2 },
+  { minX: -12.4, maxX: -5.3, minZ: 6.6, maxZ: 7.2 },
+  { minX: 5.3, maxX: 12.4, minZ: 6.6, maxZ: 7.2 },
 
-  // Wall at z = -2.0 (left & right)
-  { minX: -12.4, maxX: -4.3, minZ: -2.3, maxZ: -1.7 },
-  { minX: 4.3, maxX: 12.4, minZ: -2.3, maxZ: -1.7 },
+  // Wall at z = -1.0 (left & right), aligned with the equal-size room bands
+  { minX: -12.4, maxX: -5.3, minZ: -1.3, maxZ: -0.7 },
+  { minX: 5.3, maxX: 12.4, minZ: -1.3, maxZ: -0.7 },
 
   // Wall at z = -8.8 (left & right)
-  { minX: -12.4, maxX: -4.3, minZ: -9.1, maxZ: -8.5 },
-  { minX: 4.3, maxX: 12.4, minZ: -9.1, maxZ: -8.5 },
+  { minX: -12.4, maxX: -5.3, minZ: -9.1, maxZ: -8.5 },
+  { minX: 5.3, maxX: 12.4, minZ: -9.1, maxZ: -8.5 },
 
   // Display Cases (Pedestals + Glass)
   { minX: -1.4, maxX: 1.4, minZ: 6.3, maxZ: 8.7 },      // Statue (0, 7.5)
   { minX: -1.4, maxX: 1.4, minZ: 0.6, maxZ: 3.0 },      // Bust (0, 1.8)
-  { minX: -8.4, maxX: -5.6, minZ: 2.8, maxZ: 5.2 },     // French branch (-7.0, 4.0)
-  { minX: 5.6, maxX: 8.4, minZ: 2.8, maxZ: 5.2 },      // Letter to workers (7.0, 4.0)
-  { minX: -8.4, maxX: -5.6, minZ: -6.0, maxZ: -3.6 },   // Declaration (-7.0, -4.8)
-  { minX: 5.6, maxX: 8.4, minZ: -6.0, maxZ: -3.6 },    // Silk shirt (7.0, -4.8)
-  { minX: -8.4, maxX: -5.6, minZ: -12.7, maxZ: -10.3 }, // Khaki outfit (-7.0, -11.5)
+  { minX: -10.3, maxX: -7.5, minZ: 2.8, maxZ: 5.2 },   // French branch (-8.9, 4.0)
+  { minX: 7.5, maxX: 10.3, minZ: 2.8, maxZ: 5.2 },     // Letter to workers (8.9, 4.0)
+  { minX: -10.3, maxX: -7.5, minZ: -6.0, maxZ: -3.6 }, // Declaration (-8.9, -4.8)
+  { minX: 7.5, maxX: 10.3, minZ: -6.0, maxZ: -3.6 },  // Silk shirt (8.9, -4.8)
+  { minX: -10.3, maxX: -7.5, minZ: -12.7, maxZ: -10.3 }, // Khaki outfit (-8.9, -11.5)
   { minX: -1.4, maxX: 1.4, minZ: -12.7, maxZ: -10.3 },  // National emblem (0, -11.5)
 ]
 

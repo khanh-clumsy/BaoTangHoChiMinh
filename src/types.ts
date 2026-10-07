@@ -9,6 +9,15 @@ export type ExhibitKind =
   | 'memorial'
   | 'emblem'
 
+export type DiscoveryStep = {
+  id: string
+  title: string
+  prompt: string
+  options: string[]
+  answer: number
+  explanation: string
+}
+
 export type Exhibit = {
   id: string
   index: number
@@ -17,6 +26,13 @@ export type Exhibit = {
   zone: string
   summary: string
   narration: string
+  documentContent?: string
+  historicalContext: string
+  keyIdea: string
+  reflectionQuestion: string
+  reflectionAnswer: string
+  audioText: string
+  discoverySteps?: DiscoveryStep[]
   kind: ExhibitKind
   modelPath?: string
   texturePath?: string
@@ -24,6 +40,7 @@ export type Exhibit = {
   targetHeight?: number
   rotation?: [number, number, number]
   rotationY?: number
+  wrapperRotationY?: number
   modelOffsetY?: number
   position: [number, number, number]
   approach: [number, number]

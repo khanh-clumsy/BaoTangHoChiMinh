@@ -1,10 +1,10 @@
-import { Environment, Html, Line, OrbitControls, Sparkles, useGLTF, useAnimations } from '@react-three/drei'
+import { Environment, Html, Line, OrbitControls, PointerLockControls, Sparkles, useGLTF, useAnimations, useTexture } from '@react-three/drei'
 import { Canvas, ThreeEvent, useFrame, useThree } from '@react-three/fiber'
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { exhibits } from '../data/exhibits'
 import type { Exhibit, MoveCommand } from '../types'
-import { clampToWalkable, findPath, Point2D } from '../utils/pathfinding'
+import { clampToWalkable, findPath, isWalkable, Point2D } from '../utils/pathfinding'
 import {
   ClothingArtifact,
   DocumentsArtifact,
@@ -21,9 +21,11 @@ type Props = {
   activeId?: string
   visited: Set<string>
   isLocked: boolean
+  viewMode: 'overview' | 'firstPerson'
   started: boolean
   onArrive: (exhibit: Exhibit) => void
   onMoveAnywhere: () => void
+  onRequestOverview: () => void
 }
 
 interface Ping {
@@ -36,8 +38,8 @@ interface Ping {
 const FLOOR_Y = 0
 
 // Standard overview camera coordinates
-const DEFAULT_CAM_POS = new THREE.Vector3(18, 22, 18)
-const DEFAULT_CAM_TARGET = new THREE.Vector3(0, 0, 0)
+const DEFAULT_CAM_POS = new THREE.Vector3(20, 24, 20)
+const DEFAULT_CAM_TARGET = new THREE.Vector3(0, 0, -3.5)
 
 const DOOR_CAM_POS = new THREE.Vector3(0, 2.2, 21.0)
 const DOOR_LOOK_AT = new THREE.Vector3(0, 1.8, 14.5)
@@ -45,6 +47,7 @@ const DOOR_LOOK_AT = new THREE.Vector3(0, 1.8, 14.5)
 function CameraController({
   activeId,
   isLocked,
+  viewMode,
   started,
   controlsRef,
 }: {
@@ -52,6 +55,7 @@ function CameraController({
   isLocked: boolean
   started: boolean
   controlsRef: React.RefObject<any>
+  viewMode: 'overview' | 'firstPerson'
 }) {
   const { camera } = useThree()
   const introStartTime = useRef<number | null>(null)
@@ -62,6 +66,7 @@ function CameraController({
 
   // Ban đầu khi chưa bấm bắt đầu: cố định camera trước cửa
   useEffect(() => {
+    if (viewMode === 'firstPerson') return
     if (!started) {
       camera.position.copy(DOOR_CAM_POS)
       if (controlsRef.current) {
@@ -69,7 +74,7 @@ function CameraController({
         controlsRef.current.update()
       }
     }
-  }, [started, camera, controlsRef])
+  }, [started, camera, controlsRef, viewMode])
 
   // Kích hoạt chuỗi fly-in khi bấm "Bắt đầu tham quan"
   useEffect(() => {
@@ -80,7 +85,7 @@ function CameraController({
   }, [started])
 
   useEffect(() => {
-    if (!started) return
+    if (!started || viewMode === 'firstPerson') return
     isTransitioning.current = true
     if (activeId) {
       const activeExhibit = exhibits.find((e) => e.id === activeId)
@@ -100,6 +105,15 @@ function CameraController({
           exPos[1] + 1.35,
           exPos[2] + normZ * 3.6
         )
+
+        // Vào inspect ngay lập tức để thao tác kéo chuột phải không bị transition ghi đè.
+        camera.position.copy(targetCamPos.current)
+        if (controlsRef.current) {
+          controlsRef.current.target.copy(targetLookAt.current)
+          controlsRef.current.update()
+        }
+        isTransitioning.current = false
+        return
       }
     } else {
       // Overview Mode: Quay lại góc nhìn toàn cảnh bảo tàng mượt mà
@@ -113,11 +127,12 @@ function CameraController({
       isTransitioning.current = false
     }, 2500)
     return () => clearTimeout(timer)
-  }, [activeId, isLocked, started])
+  }, [activeId, isLocked, started, viewMode])
 
   useFrame(() => {
     // Nếu chưa bấm start: camera đứng yên ở trước cửa nhìn vào cánh cửa
-    if (!started) {
+    if (!started || viewMode === 'firstPerson') {
+      if (viewMode === 'firstPerson') return
       camera.position.lerp(DOOR_CAM_POS, 0.2)
       if (controlsRef.current) {
         controlsRef.current.target.lerp(DOOR_LOOK_AT, 0.2)
@@ -195,12 +210,238 @@ function CameraController({
   return null
 }
 
+function MapMouseControls({
+  controlsRef,
+  enabled,
+  suppressClickRef,
+}: {
+  controlsRef: React.RefObject<any>
+  enabled: boolean
+  suppressClickRef: React.MutableRefObject<boolean>
+}) {
+  const { camera, gl } = useThree()
+  const pressedButtons = useRef(0)
+  const previousPoint = useRef<{ x: number; y: number } | null>(null)
+  const dragStartPoint = useRef<{ x: number; y: number } | null>(null)
+  const spherical = useMemo(() => new THREE.Spherical(), [])
+  const rotatedPosition = useMemo(() => new THREE.Vector3(), [])
+
+  useEffect(() => {
+    const element = gl.domElement
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.button !== 0 && event.button !== 2) return
+      if (pressedButtons.current === 0) suppressClickRef.current = false
+
+      pressedButtons.current |= event.button === 0 ? 1 : 2
+      previousPoint.current = { x: event.clientX, y: event.clientY }
+      dragStartPoint.current = { x: event.clientX, y: event.clientY }
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const canRotate = pressedButtons.current === 1 || pressedButtons.current === 2 || pressedButtons.current === 3
+      if (!enabled || !canRotate || (event.buttons & pressedButtons.current) === 0) return
+      if (!previousPoint.current) {
+        previousPoint.current = { x: event.clientX, y: event.clientY }
+        return
+      }
+
+      if (dragStartPoint.current && !suppressClickRef.current) {
+        const distance = Math.hypot(
+          event.clientX - dragStartPoint.current.x,
+          event.clientY - dragStartPoint.current.y,
+        )
+        if (distance > 4) suppressClickRef.current = true
+      }
+
+      const deltaX = event.clientX - previousPoint.current.x
+      const deltaY = event.clientY - previousPoint.current.y
+      previousPoint.current = { x: event.clientX, y: event.clientY }
+
+      const controls = controlsRef.current
+      if (!controls || deltaX === 0 && deltaY === 0) return
+
+      spherical.setFromVector3(camera.position.clone().sub(controls.target))
+      spherical.theta -= deltaX * 0.0035
+      spherical.phi = THREE.MathUtils.clamp(spherical.phi + deltaY * 0.0035, 0.12, Math.PI / 2.15)
+      rotatedPosition.setFromSpherical(spherical.makeSafe()).add(controls.target)
+      camera.position.copy(rotatedPosition)
+      camera.lookAt(controls.target)
+      controls.update()
+    }
+
+    const releaseButton = (event: PointerEvent) => {
+      if (event.button === 0) pressedButtons.current &= ~1
+      if (event.button === 2) pressedButtons.current &= ~2
+      if (pressedButtons.current === 0) {
+        previousPoint.current = null
+        dragStartPoint.current = null
+      }
+    }
+
+    const handleContextMenu = (event: MouseEvent) => event.preventDefault()
+
+    element.addEventListener('pointerdown', handlePointerDown)
+    element.addEventListener('pointermove', handlePointerMove)
+    element.addEventListener('pointerup', releaseButton)
+    element.addEventListener('pointercancel', releaseButton)
+    element.addEventListener('contextmenu', handleContextMenu)
+
+    return () => {
+      element.removeEventListener('pointerdown', handlePointerDown)
+      element.removeEventListener('pointermove', handlePointerMove)
+      element.removeEventListener('pointerup', releaseButton)
+      element.removeEventListener('pointercancel', releaseButton)
+      element.removeEventListener('contextmenu', handleContextMenu)
+    }
+  }, [camera, controlsRef, enabled, gl, rotatedPosition, spherical, suppressClickRef])
+
+  return null
+}
+
+function FirstPersonController({
+  enabled,
+  pathRef,
+  playerPosRef,
+  onPositionUpdate,
+}: {
+  enabled: boolean
+  pathRef: React.MutableRefObject<{ waypoints: Point2D[]; exhibitId?: string } | null>
+  playerPosRef: React.MutableRefObject<[number, number]>
+  onPositionUpdate: (pos: [number, number]) => void
+}) {
+  const { camera } = useThree()
+  const keys = useRef(new Set<string>())
+  const wasEnabled = useRef(false)
+
+  useEffect(() => {
+    const down = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase()
+      if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
+        event.preventDefault()
+        keys.current.add(key)
+      }
+    }
+    const up = (event: KeyboardEvent) => keys.current.delete(event.key.toLowerCase())
+    const clear = () => keys.current.clear()
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    window.addEventListener('blur', clear)
+    document.addEventListener('visibilitychange', clear)
+    return () => {
+      window.removeEventListener('keydown', down)
+      window.removeEventListener('keyup', up)
+      window.removeEventListener('blur', clear)
+      document.removeEventListener('visibilitychange', clear)
+    }
+  }, [])
+
+  useFrame((_, delta) => {
+    const [x, z] = playerPosRef.current
+    if (enabled && !wasEnabled.current) {
+      pathRef.current = null
+      camera.position.set(x, 1.65, z)
+      camera.lookAt(x, 1.65, z - 1)
+    }
+    wasEnabled.current = enabled
+    if (!enabled) return
+
+    const forward = Number(keys.current.has('w') || keys.current.has('arrowup')) - Number(keys.current.has('s') || keys.current.has('arrowdown'))
+    const strafe = Number(keys.current.has('d') || keys.current.has('arrowright')) - Number(keys.current.has('a') || keys.current.has('arrowleft'))
+    if (!forward && !strafe) return
+    pathRef.current = null
+
+    const direction = new THREE.Vector3()
+    camera.getWorldDirection(direction)
+    direction.y = 0
+    direction.normalize()
+    // Camera nhìn theo hướng -Z thì bên phải là +X.
+    const right = new THREE.Vector3(-direction.z, 0, direction.x)
+    // Không dùng clampToWalkable cho từng frame: khi đụng tường, nó có thể
+    // nhảy sang điểm gần đó và làm người chơi bị giật/quay hướng bất ngờ.
+    const frameDelta = Math.min(delta, 0.05)
+    const nextX = x + (direction.x * forward + right.x * strafe) * frameDelta * 2.6
+    const nextZ = z + (direction.z * forward + right.z * strafe) * frameDelta * 2.6
+    let safe = { x, z }
+
+    // Thử đi chéo trước, sau đó trượt theo từng trục khi áp sát tường.
+    if (isWalkable(nextX, nextZ)) {
+      safe = { x: nextX, z: nextZ }
+    } else if (isWalkable(nextX, z)) {
+      safe = { x: nextX, z }
+    } else if (isWalkable(x, nextZ)) {
+      safe = { x, z: nextZ }
+    }
+    playerPosRef.current = [safe.x, safe.z]
+    camera.position.set(safe.x, 1.65, safe.z)
+    onPositionUpdate([safe.x, safe.z])
+  })
+
+  return null
+}
+
 function Wall({ position, scale }: { position: [number, number, number]; scale: [number, number, number] }) {
   return (
     <mesh position={position} castShadow receiveShadow>
       <boxGeometry args={scale} />
       <meshStandardMaterial color="#2d3238" roughness={0.7} metalness={0.1} />
     </mesh>
+  )
+}
+
+function WallFlag({ position, type, label, visible = true }: { position: [number, number, number]; type: 'national' | 'party'; label: string; visible?: boolean }) {
+  const partyTexture = useTexture('/24-02-2024-ve-su-dung-co-dang-va-hinh-anh-co-dang-cong-san-viet-nam-A3C3304C.jpg')
+  const nationalTexture = useTexture('/images%20(4).jpg')
+  const texture = type === 'party' ? partyTexture : nationalTexture
+  const flagHeight = type === 'party' ? 2.13 : 1.75
+  texture.colorSpace = THREE.SRGBColorSpace
+  return (
+    <group position={position} visible={visible}>
+      <mesh position={[-1.6, 0.9, 0]} castShadow material={new THREE.MeshStandardMaterial({ color: '#d4af37', metalness: 0.8, roughness: 0.25 })}>
+        <cylinderGeometry args={[0.035, 0.035, 2.15, 12]} />
+      </mesh>
+      <mesh position={[0, 0.02, 0.02]} castShadow>
+        <planeGeometry args={[3.2, flagHeight, 8, 5]} />
+        <meshStandardMaterial map={texture} side={THREE.DoubleSide} roughness={0.72} />
+      </mesh>
+      <Html position={[0, -(flagHeight / 2 + 0.23), 0.04]} center distanceFactor={12} style={{ pointerEvents: 'none' }}>
+        <span className="world-wall-label">{label}</span>
+      </Html>
+    </group>
+  )
+}
+
+function ReliefBanner({ position, title, subtitle, width = 6.8, height = 1.2 }: { position: [number, number, number]; title: string; subtitle: string; width?: number; height?: number }) {
+  const texture = useMemo(() => createPlaqueTexture(title, subtitle, 1200, 240), [title, subtitle])
+  return (
+    <group position={position}>
+      <mesh position={[0, 0, -0.08]} castShadow material={new THREE.MeshStandardMaterial({ color: '#3a2117', roughness: 0.38, metalness: 0.12 })}>
+        <boxGeometry args={[width + 0.26, height + 0.26, 0.16]} />
+      </mesh>
+      <mesh position={[0, 0, 0.015]} castShadow>
+        <planeGeometry args={[width, height]} />
+        <meshStandardMaterial map={texture} roughness={0.42} metalness={0.2} />
+      </mesh>
+    </group>
+  )
+}
+
+function PortraitDisplay({ position, visible = true }: { position: [number, number, number]; visible?: boolean }) {
+  const portraitTexture = useTexture('/OIP.jpg')
+  portraitTexture.colorSpace = THREE.SRGBColorSpace
+  return (
+    <group position={position} visible={visible}>
+      <mesh position={[0, 0, -0.09]} castShadow material={new THREE.MeshStandardMaterial({ color: '#4a2511', roughness: 0.38 })}>
+        <boxGeometry args={[3.2, 2.9, 0.18]} />
+      </mesh>
+      <mesh position={[0, 0, 0.015]}>
+        <planeGeometry args={[2.75, 2.55]} />
+        <meshStandardMaterial map={portraitTexture} roughness={0.72} />
+      </mesh>
+      <mesh position={[0, 1.15, 0.03]} castShadow material={new THREE.MeshStandardMaterial({ color: '#d4af37', metalness: 0.88, roughness: 0.2 })}>
+        <boxGeometry args={[3.0, 0.08, 0.08]} />
+      </mesh>
+    </group>
   )
 }
 
@@ -324,6 +565,59 @@ function RoomPlaque({
   )
 }
 
+function RoomCarpet({
+  position,
+  onPointerUp,
+}: {
+  position: [number, number]
+  onPointerUp: (event: ThreeEvent<PointerEvent>) => void
+}) {
+  const size = 4.4
+  const trim = size / 2 - 0.06
+
+  return (
+    <group position={[position[0], 0, position[1]]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 0]} receiveShadow onPointerUp={onPointerUp}>
+        <planeGeometry args={[size, size]} />
+        <meshStandardMaterial color="#a82932" roughness={0.88} />
+      </mesh>
+      <mesh position={[-trim, 0.009, 0]}>
+        <boxGeometry args={[0.07, 0.012, size]} />
+        <meshStandardMaterial color="#e5b83b" metalness={0.9} roughness={0.2} />
+      </mesh>
+      <mesh position={[trim, 0.009, 0]}>
+        <boxGeometry args={[0.07, 0.012, size]} />
+        <meshStandardMaterial color="#e5b83b" metalness={0.9} roughness={0.2} />
+      </mesh>
+      <mesh position={[0, 0.009, -trim]}>
+        <boxGeometry args={[size, 0.012, 0.07]} />
+        <meshStandardMaterial color="#e5b83b" metalness={0.9} roughness={0.2} />
+      </mesh>
+      <mesh position={[0, 0.009, trim]}>
+        <boxGeometry args={[size, 0.012, 0.07]} />
+        <meshStandardMaterial color="#e5b83b" metalness={0.9} roughness={0.2} />
+      </mesh>
+    </group>
+  )
+}
+
+function CarpetStrip({
+  position,
+  size,
+  onPointerUp,
+}: {
+  position: [number, number]
+  size: [number, number]
+  onPointerUp: (event: ThreeEvent<PointerEvent>) => void
+}) {
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[position[0], 0.006, position[1]]} receiveShadow onPointerUp={onPointerUp}>
+      <planeGeometry args={size} />
+      <meshStandardMaterial color="#a82932" roughness={0.88} />
+    </mesh>
+  )
+}
+
 function Artifact({ exhibit }: { exhibit: Exhibit }) {
   if (exhibit.modelPath) {
     return (
@@ -333,6 +627,7 @@ function Artifact({ exhibit }: { exhibit: Exhibit }) {
           texturePath={exhibit.texturePath}
           targetHeight={exhibit.targetHeight ?? 1.6}
           rotation={exhibit.rotation ?? [0, exhibit.rotationY ?? 0, 0]}
+          wrapperRotationY={exhibit.wrapperRotationY}
         />
       </group>
     )
@@ -352,7 +647,7 @@ function Artifact({ exhibit }: { exhibit: Exhibit }) {
   return <>{models[exhibit.kind] || <StatueArtifact />}</>
 }
 
-function RotatingArtifact({ exhibit }: { exhibit: Exhibit; active?: boolean }) {
+function RotatingArtifact({ exhibit, active }: { exhibit: Exhibit; active?: boolean }) {
   return (
     <group>
       <Artifact exhibit={exhibit} />
@@ -361,11 +656,12 @@ function RotatingArtifact({ exhibit }: { exhibit: Exhibit; active?: boolean }) {
 }
 
 // Tiered Circular Museum Pedestal with Gold Nameplate
-function DisplayCase({ exhibit, active, visited, onNavigate }: {
+function DisplayCase({ exhibit, active, visited, onNavigate, allowHover }: {
   exhibit: Exhibit
   active: boolean
   visited: boolean
   onNavigate: (item: Exhibit) => void
+  allowHover: boolean
 }) {
   const [hovered, setHovered] = useState(false)
   const markerRef = useRef<THREE.Mesh>(null)
@@ -389,7 +685,13 @@ function DisplayCase({ exhibit, active, visited, onNavigate }: {
   }, [exhibit])
 
   return (
-    <group position={exhibit.position}>
+    <group
+      position={exhibit.position}
+      onClick={(e) => {
+        e.stopPropagation()
+        if (!active) onNavigate(exhibit)
+      }}
+    >
       {/* Tiered Circular Pedestal Base (Bục tròn phân tầng sang trọng) */}
       {/* Tier 1: Dark Granite Foundation */}
       <mesh position={[0, 0.07, 0]} receiveShadow castShadow material={new THREE.MeshStandardMaterial({ color: '#22272e', roughness: 0.35, metalness: 0.1 })}>
@@ -433,13 +735,26 @@ function DisplayCase({ exhibit, active, visited, onNavigate }: {
       {/* Artifact with 360 Gentle Spin in Inspect Mode */}
       <RotatingArtifact exhibit={exhibit} active={active} />
 
+      {/* Hitbox vô hình bao quanh hiện vật: model hoặc vùng sát model đều mở Inspect */}
+      {!active && (
+        <group
+          position={[0, 1.55, 0]}
+          onClick={(e) => { e.stopPropagation(); onNavigate(exhibit) }}
+        >
+          <mesh>
+            <boxGeometry args={[3.8, 3.2, 3.8]} />
+            <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+          </mesh>
+        </group>
+      )}
+
       {/* Diamond / Star Marker - Ẩn khi đang inspect để không che khuất hiện vật */}
       {!active && (
         <mesh
           ref={markerRef}
           position={[0, 2.65, 0]}
-          onPointerOver={(e) => { e.stopPropagation(); setHovered(true) }}
-          onPointerOut={() => setHovered(false)}
+          onPointerOver={allowHover ? (e) => { e.stopPropagation(); setHovered(true) } : undefined}
+          onPointerOut={allowHover ? () => setHovered(false) : undefined}
           onClick={(e) => { e.stopPropagation(); onNavigate(exhibit) }}
           castShadow
         >
@@ -677,26 +992,34 @@ function IntroDoor({ started }: { started: boolean }) {
   }, [started, actions])
 
   return (
-    <group ref={group} position={[0, 0, 14.5]}>
+    <group ref={group} position={[0, 0, 14.5]} raycast={() => null}>
       <group position={[centerOffset.x, centerOffset.y, centerOffset.z]} scale={[scale, scale, scale]}>
         <primitive object={scene} />
       </group>
     </group>
   )
 }
+// Exhibit models are already requested by GLBArtifact when their display cases mount.
+// Preloading them here duplicates the eager request and adds work before the scene mounts.
 useGLTF.preload('/models/psx_indian_door.glb')
-exhibits.forEach((item) => {
-  if (item.modelPath) {
-    useGLTF.preload(item.modelPath)
-  }
-})
 
-function MuseumWorld({ command, activeId, visited, isLocked, started, onArrive, onMoveAnywhere }: Props) {
+function MuseumWorld({ command, activeId, visited, isLocked, viewMode, started, onArrive, onMoveAnywhere, onRequestOverview }: Props) {
   const controlsRef = useRef<any>(null)
+  const pointerLockRef = useRef<any>(null)
   const pathRef = useRef<{ waypoints: Point2D[]; exhibitId?: string } | null>(null)
+  const lastWaypointCount = useRef(0)
   const [pings, setPings] = useState<Ping[]>([])
   const [playerPos, setPlayerPos] = useState<[number, number]>([0, 12.3])
+  const playerPosRef = useRef<[number, number]>([0, 12.3])
   const [activeWaypoints, setActiveWaypoints] = useState<Point2D[]>([])
+  const suppressFloorClickRef = useRef(false)
+
+  useEffect(() => {
+    // Rời FPS phải nhả Pointer Lock ngay để có thể bấm nút Inspect/Thoát.
+    if (!started || viewMode !== 'firstPerson' || activeId) {
+      pointerLockRef.current?.unlock?.()
+    }
+  }, [activeId, started, viewMode])
 
   useFrame(() => {
     if (pings.length > 0) {
@@ -717,6 +1040,7 @@ function MuseumWorld({ command, activeId, visited, isLocked, started, onArrive, 
       waypoints: [...path],
       exhibitId: command.exhibitId,
     }
+    lastWaypointCount.current = path.length
     setActiveWaypoints([...path])
 
     setPings((prev) => [
@@ -726,6 +1050,7 @@ function MuseumWorld({ command, activeId, visited, isLocked, started, onArrive, 
   }, [command])
 
   const navigateToExhibit = (item: Exhibit) => {
+    onRequestOverview()
     const safeTarget = clampToWalkable(item.approach[0], item.approach[1])
     const path = findPath({ x: playerPos[0], z: playerPos[1] }, safeTarget)
 
@@ -733,6 +1058,7 @@ function MuseumWorld({ command, activeId, visited, isLocked, started, onArrive, 
       waypoints: [...path],
       exhibitId: item.id,
     }
+    lastWaypointCount.current = path.length
     setActiveWaypoints([...path])
 
     setPings((prev) => [
@@ -743,7 +1069,9 @@ function MuseumWorld({ command, activeId, visited, isLocked, started, onArrive, 
 
   const handleFloorClick = (event: ThreeEvent<PointerEvent>) => {
     // Khóa di chuyển nhân vật khi đang trong chế độ Inspect hiện vật
-    if (activeId) return
+    if (activeId || viewMode === 'firstPerson') return
+    // Tổ hợp trái + phải dành riêng cho xoay camera, không đặt điểm đến.
+    if (suppressFloorClickRef.current || event.nativeEvent.buttons === 3) return
 
     event.stopPropagation()
     onMoveAnywhere()
@@ -756,6 +1084,7 @@ function MuseumWorld({ command, activeId, visited, isLocked, started, onArrive, 
     pathRef.current = {
       waypoints: [...path],
     }
+    lastWaypointCount.current = path.length
     setActiveWaypoints([...path])
 
     setPings((prev) => [
@@ -772,17 +1101,23 @@ function MuseumWorld({ command, activeId, visited, isLocked, started, onArrive, 
   }
 
   const handlePositionUpdate = (pos: [number, number]) => {
-    setPlayerPos(pos)
-    if (pathRef.current) {
-      setActiveWaypoints([...pathRef.current.waypoints])
-    } else {
-      setActiveWaypoints([])
+    // Player runs in useFrame; updating React state at 60fps rerenders the whole museum.
+    // Keep navigation responsive while limiting scene-level renders to meaningful movement.
+    const dx = pos[0] - playerPos[0]
+    const dz = pos[1] - playerPos[1]
+    playerPosRef.current = pos
+    if (dx * dx + dz * dz >= 0.04) setPlayerPos(pos)
+    const waypointCount = pathRef.current?.waypoints.length ?? 0
+    if (waypointCount !== lastWaypointCount.current) {
+      lastWaypointCount.current = waypointCount
+      setActiveWaypoints(pathRef.current ? [...pathRef.current.waypoints] : [])
     }
   }
 
   return (
     <>
-      <CameraController activeId={activeId} isLocked={isLocked} started={started} controlsRef={controlsRef} />
+      <CameraController activeId={activeId} isLocked={isLocked} started={started} controlsRef={controlsRef} viewMode={viewMode} />
+      <FirstPersonController enabled={started && viewMode === 'firstPerson' && !activeId} pathRef={pathRef} playerPosRef={playerPosRef} onPositionUpdate={handlePositionUpdate} />
       <Environment preset="city" background={false} environmentIntensity={0.65} />
       <color attach="background" args={['#0f1216']} />
       <ambientLight intensity={1.1} />
@@ -805,43 +1140,47 @@ function MuseumWorld({ command, activeId, visited, isLocked, started, onArrive, 
       <Sparkles count={80} scale={[25, 8, 29]} size={4} speed={0.35} opacity={0.65} color="#ffd700" />
 
       {/* Main Dark Granite Floor */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]} receiveShadow onPointerDown={handleFloorClick}>
-        <planeGeometry args={[26, 30]} />
+      <MapMouseControls
+        controlsRef={controlsRef}
+        // Toàn cảnh cố định; chỉ cho phép xoay khi đang inspect hiện vật.
+        enabled={started && Boolean(activeId) && viewMode === 'overview'}
+        suppressClickRef={suppressFloorClickRef}
+      />
+
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, -1]} receiveShadow onPointerUp={handleFloorClick}>
+        <planeGeometry args={[26, 32]} />
         <meshStandardMaterial color="#1a1e24" roughness={0.3} metalness={0.15} />
       </mesh>
 
       {/* Red Velvet Carpet Runner */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 2.5]} receiveShadow onPointerDown={handleFloorClick}>
-        <planeGeometry args={[4.2, 22.5]} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 0]} receiveShadow onPointerUp={handleFloorClick}>
+        <planeGeometry args={[4.2, 27.5]} />
         <meshStandardMaterial color="#7f1d1d" roughness={0.88} />
       </mesh>
       {/* Gold Carpet Border Trims */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-2.15, 0.008, 2.5]} receiveShadow>
-        <planeGeometry args={[0.08, 22.5]} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-2.15, 0.008, 0]} receiveShadow>
+        <planeGeometry args={[0.08, 27.5]} />
         <meshStandardMaterial color="#e5b83b" metalness={0.9} roughness={0.2} />
       </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[2.15, 0.008, 2.5]} receiveShadow>
-        <planeGeometry args={[0.08, 22.5]} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[2.15, 0.008, 0]} receiveShadow>
+        <planeGeometry args={[0.08, 27.5]} />
         <meshStandardMaterial color="#e5b83b" metalness={0.9} roughness={0.2} />
       </mesh>
 
-      {/* Branching Red Carpet to Rooms */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-6.2, 0.005, 1.5]} receiveShadow onPointerDown={handleFloorClick}>
-        <planeGeometry args={[4.5, 3.2]} />
-        <meshStandardMaterial color="#7f1d1d" roughness={0.88} />
-      </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[6.2, 0.005, 1.5]} receiveShadow onPointerDown={handleFloorClick}>
-        <planeGeometry args={[4.5, 3.2]} />
-        <meshStandardMaterial color="#7f1d1d" roughness={0.88} />
-      </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-6.2, 0.005, -5.2]} receiveShadow onPointerDown={handleFloorClick}>
-        <planeGeometry args={[4.5, 3.2]} />
-        <meshStandardMaterial color="#7f1d1d" roughness={0.88} />
-      </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[6.2, 0.005, -5.2]} receiveShadow onPointerDown={handleFloorClick}>
-        <planeGeometry args={[4.5, 3.2]} />
-        <meshStandardMaterial color="#7f1d1d" roughness={0.88} />
-      </mesh>
+      {/* Thảm đỏ đồng nhất: tâm thảm trùng tâm từng bục trưng bày */}
+      <RoomCarpet position={[-8.9, 4]} onPointerUp={handleFloorClick} />
+      <RoomCarpet position={[8.9, 4]} onPointerUp={handleFloorClick} />
+      <RoomCarpet position={[-8.9, -4.8]} onPointerUp={handleFloorClick} />
+      <RoomCarpet position={[8.9, -4.8]} onPointerUp={handleFloorClick} />
+      <RoomCarpet position={[-8.9, -11.5]} onPointerUp={handleFloorClick} />
+      <RoomCarpet position={[0, -11.5]} onPointerUp={handleFloorClick} />
+
+      {/* Nhánh nối liền từ trục đỏ chính vào từng phòng */}
+      <CarpetStrip position={[-4.4, 4]} size={[4.6, 2.0]} onPointerUp={handleFloorClick} />
+      <CarpetStrip position={[4.4, 4]} size={[4.6, 2.0]} onPointerUp={handleFloorClick} />
+      <CarpetStrip position={[-4.4, -4.8]} size={[4.6, 2.0]} onPointerUp={handleFloorClick} />
+      <CarpetStrip position={[4.4, -4.8]} size={[4.6, 2.0]} onPointerUp={handleFloorClick} />
+      <CarpetStrip position={[-4.4, -11.5]} size={[4.6, 2.0]} onPointerUp={handleFloorClick} />
 
       {/* Cánh cửa Intro */}
       <IntroDoor started={started} />
@@ -873,7 +1212,6 @@ function MuseumWorld({ command, activeId, visited, isLocked, started, onArrive, 
         angle={0.68}
         penumbra={0.6}
         color="#fff1d6"
-        castShadow
       />
 
       {/* Cặp cột đá cẩm thạch hai bên cổng vòm lối vào */}
@@ -883,19 +1221,19 @@ function MuseumWorld({ command, activeId, visited, isLocked, started, onArrive, 
       <ColumnPost position={[2.4, 0, 20.5]} />
 
       {/* Tường bao ngoài bảo tàng */}
-      <Wall position={[-12.5, 1.2, 0]} scale={[0.4, 2.4, 29.5]} />
-      <Wall position={[12.5, 1.2, 0]} scale={[0.4, 2.4, 29.5]} />
-      <Wall position={[0, 1.2, -14.5]} scale={[25, 2.4, 0.4]} />
+      <Wall position={[-12.5, 2.4, -1]} scale={[0.4, 4.8, 31.5]} />
+      <Wall position={[12.5, 2.4, -1]} scale={[0.4, 4.8, 31.5]} />
+      <Wall position={[0, 3.1, -16.5]} scale={[25, 6.2, 0.4]} />
       <Wall position={[-7.1, 1.5, 14.5]} scale={[10.6, 3.0, 0.4]} />
       <Wall position={[7.1, 1.5, 14.5]} scale={[10.6, 3.0, 0.4]} />
 
       {/* Interior room partition dividers */}
-      <Wall position={[-8.4, 1.05, 6.9]} scale={[7.5, 2.1, 0.25]} />
-      <Wall position={[8.4, 1.05, 6.9]} scale={[7.5, 2.1, 0.25]} />
-      <Wall position={[-8.4, 1.05, -2.0]} scale={[7.5, 2.1, 0.25]} />
-      <Wall position={[8.4, 1.05, -2.0]} scale={[7.5, 2.1, 0.25]} />
-      <Wall position={[-8.4, 1.05, -8.8]} scale={[7.5, 2.1, 0.25]} />
-      <Wall position={[8.4, 1.05, -8.8]} scale={[7.5, 2.1, 0.25]} />
+      <Wall position={[-8.75, 1.05, 6.9]} scale={[6.8, 2.1, 0.25]} />
+      <Wall position={[8.75, 1.05, 6.9]} scale={[6.8, 2.1, 0.25]} />
+      <Wall position={[-8.75, 1.05, -1.0]} scale={[6.8, 2.1, 0.25]} />
+      <Wall position={[8.75, 1.05, -1.0]} scale={[6.8, 2.1, 0.25]} />
+      <Wall position={[-8.75, 1.05, -8.8]} scale={[6.8, 2.1, 0.25]} />
+      <Wall position={[8.75, 1.05, -8.8]} scale={[6.8, 2.1, 0.25]} />
 
       {/* Classical Marble Pillars with Gold Trim */}
       <ColumnPost position={[-2.4, 0, 7.0]} />
@@ -916,89 +1254,98 @@ function MuseumWorld({ command, activeId, visited, isLocked, started, onArrive, 
         <cylinderGeometry args={[0.018, 0.018, 3.6, 12]} />
       </mesh>
 
-      {/* National Flag & Memorial Red Wall Backdrop */}
-      <group position={[0, 1.6, -14.2]}>
-        <mesh material={new THREE.MeshStandardMaterial({ color: '#b91c1c', roughness: 0.4 })}>
-          <boxGeometry args={[4.8, 2.6, 0.06]} />
-        </mesh>
-        <mesh position={[0, 0.35, 0.04]} material={new THREE.MeshStandardMaterial({ color: '#e5b83b', metalness: 0.9, roughness: 0.2 })}>
-          <octahedronGeometry args={[0.38, 0]} />
-        </mesh>
-      </group>
+      {/* Cụm nhận diện lịch sử được mount sớm để không làm Suspense đen màn hình khi bắt đầu. */}
+      <WallFlag position={[-5.1, 4.35, -16.04]} type="national" label="CỜ TỔ QUỐC" visible={started} />
+      <WallFlag position={[5.1, 4.35, -16.04]} type="party" label="CỜ ĐẢNG" visible={started} />
+      <PortraitDisplay position={[0, 4.35, -16.0]} visible={started} />
+      <ReliefBanner
+        position={[0, 2.15, -16.02]}
+        title="KHÔNG CÓ GÌ QUÝ HƠN ĐỘC LẬP, TỰ DO"
+        subtitle="Chủ tịch Hồ Chí Minh"
+        width={7.2}
+        height={1.25}
+      />
 
-      {/* 3D Floor Room Signs (Được vẽ trực tiếp trên sàn WebGL, không nhìn xuyên tường, sang trọng và chính xác) */}
+      {/* Bảng mô tả đồng nhất, gắn trên tường phía sau từng gian trưng bày */}
       {started && (
         <group>
           {/* Lối vào & Sảnh Đón Tiếp */}
           <RoomPlaque
-            position={[0, 0.012, 12.8]}
+            position={[0, 2.1, 14.27]}
             title="✦ LỐI VÀO BẢO TÀNG · SẢNH ĐÓN TIẾP ✦"
             subtitle="Chào mừng quý khách đến với Bảo tàng Hồ Chí Minh"
-            width={4.2}
-            height={0.95}
+            width={3.8}
+            height={0.85}
+            rotation={[0, Math.PI, 0]}
           />
 
           {/* Gian Long Trọng (Tượng Bác Hồ) */}
           <RoomPlaque
-            position={[0, 0.012, 9.8]}
+            position={[0, 1.42, 6.77]}
             title="★ GIAN LONG TRỌNG · TƯỢNG BÁC HỒ ★"
             subtitle="Không gian trung tâm mở đầu hành trình di sản"
-            width={4.2}
-            height={0.95}
+            width={3.8}
+            height={0.85}
+            rotation={[0, Math.PI, 0]}
           />
 
           {/* Phòng 1: Hoạt động quốc tế */}
           <RoomPlaque
-            position={[-7.0, 0.012, 1.8]}
+            position={[-12.27, 1.42, 4.0]}
             title="✦ PHÒNG 1: HOẠT ĐỘNG QUỐC TẾ ✦"
             subtitle="Chi bộ Đảng Pháp & Hành trình cứu nước (1920–1923)"
             width={3.8}
-            height={0.9}
+            height={0.85}
+            rotation={[0, Math.PI / 2, 0]}
           />
 
           {/* Phòng 2: Tư liệu bút tích */}
           <RoomPlaque
-            position={[7.0, 0.012, 1.8]}
+            position={[12.27, 1.42, 4.0]}
             title="✦ PHÒNG 2: TƯ LIỆU BÚT TÍCH ✦"
             subtitle="Thư Bác Hồ gửi công nhân & Kháng chiến kiến quốc"
             width={3.8}
-            height={0.9}
+            height={0.85}
+            rotation={[0, -Math.PI / 2, 0]}
           />
 
           {/* Phòng 3: Bút tích lịch sử */}
           <RoomPlaque
-            position={[-7.0, 0.012, -7.0]}
+            position={[-12.27, 1.42, -4.8]}
             title="✦ PHÒNG 3: BÚT TÍCH LỊCH SỬ ✦"
             subtitle="Thư của Bác & Các bản tuyên cáo độc lập 1945"
             width={3.8}
-            height={0.9}
+            height={0.85}
+            rotation={[0, Math.PI / 2, 0]}
           />
 
           {/* Phòng 4: Kỷ vật đời thường */}
           <RoomPlaque
-            position={[7.0, 0.012, -7.0]}
+            position={[12.27, 1.42, -4.8]}
             title="✦ PHÒNG 4: KỶ VẬT ĐỜI THƯỜNG ✦"
             subtitle="Chiếc áo lụa nâu giản dị & Kỷ vật chiến khu Việt Bắc"
             width={3.8}
-            height={0.9}
+            height={0.85}
+            rotation={[0, -Math.PI / 2, 0]}
           />
 
           {/* Phòng 5: Kỷ vật kháng chiến */}
           <RoomPlaque
-            position={[-7.0, 0.012, -13.6]}
+            position={[-12.27, 1.42, -11.5]}
             title="✦ PHÒNG 5: KỶ VẬT KHÁNG CHIẾN ✦"
             subtitle="Bộ quần áo kaki lịch sử & Kỷ vật ngoại giao 1959"
             width={3.8}
-            height={0.9}
+            height={0.85}
+            rotation={[0, Math.PI / 2, 0]}
           />
 
           {/* Gian tưởng niệm */}
           <RoomPlaque
-            position={[0, 0.012, -8.2]}
+            position={[0, 1.42, -16.27]}
             title="★ GIAN TƯỞNG NIỆM CHỦ TỊCH HỒ CHÍ MINH ★"
             subtitle="Không gian tri ân Anh hùng giải phóng dân tộc"
-            width={4.4}
-            height={0.95}
+            width={3.8}
+            height={0.85}
           />
         </group>
       )}
@@ -1010,6 +1357,7 @@ function MuseumWorld({ command, activeId, visited, isLocked, started, onArrive, 
           exhibit={item}
           active={activeId === item.id}
           visited={visited.has(item.id)}
+          allowHover={viewMode === 'overview'}
           onNavigate={navigateToExhibit}
         />
       ))}
@@ -1027,21 +1375,27 @@ function MuseumWorld({ command, activeId, visited, isLocked, started, onArrive, 
         pathRef={pathRef}
         onReached={handleReached}
         onPositionUpdate={handlePositionUpdate}
-        visible={started && !activeId}
+        visible={started && !activeId && viewMode === 'overview'}
       />
 
       <OrbitControls
         ref={controlsRef}
         makeDefault
-        enabled={started}
-        enableRotate={started && (!isLocked || !!activeId)}
-        enablePan={started && !activeId}
-        enableZoom={started}
+        enabled={started && viewMode === 'overview' && Boolean(activeId)}
+        enableRotate={false}
+        enablePan={Boolean(activeId)}
+        enableZoom={Boolean(activeId)}
+        mouseButtons={{ LEFT: -1 as THREE.MOUSE, RIGHT: -1 as THREE.MOUSE }}
         enableDamping
         dampingFactor={0.08}
         maxPolarAngle={activeId ? Math.PI / 2.05 : Math.PI / 2.15}
         minDistance={activeId ? 2.0 : 6}
-        maxDistance={activeId ? 6.2 : 55}
+        maxDistance={activeId ? 6.2 : 68}
+      />
+      <PointerLockControls
+        ref={pointerLockRef}
+        enabled={started && viewMode === 'firstPerson' && !activeId}
+        pointerSpeed={0.35}
       />
     </>
   )
@@ -1051,9 +1405,9 @@ export function MuseumScene(props: Props) {
   return (
     <Canvas
       shadows
-      dpr={[1, 2]}
+      dpr={[1, 1.5]}
       camera={{ position: [0, 2.2, 21.0], fov: 42, near: 0.1, far: 150 }}
-      gl={{ antialias: true, preserveDrawingBuffer: true }}
+      gl={{ antialias: true, preserveDrawingBuffer: false }}
     >
       <Suspense fallback={null}>
         <MuseumWorld {...props} />

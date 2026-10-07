@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Exhibit } from '../types'
+import { useSpeechNarration } from '../hooks/useSpeechNarration'
 
 type Props = {
   exhibit: Exhibit
@@ -8,9 +9,9 @@ type Props = {
 }
 
 export function ExhibitPanel({ exhibit, visited, onClose }: Props) {
-  const [expandedDoc, setExpandedDoc] = useState(false)
-
-  const isDocument = exhibit.kind === 'document' || exhibit.kind === 'heritage'
+  const [showAnswer, setShowAnswer] = useState(false)
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number>>({})
+  const narration = useSpeechNarration(exhibit.audioText)
 
   return (
     <>
@@ -27,33 +28,80 @@ export function ExhibitPanel({ exhibit, visited, onClose }: Props) {
         <div className="divider" />
         <p>{exhibit.narration}</p>
 
-        {isDocument && (
-          <button
-            className="doc-read-btn"
-            onClick={() => setExpandedDoc(true)}
-            style={{
-              marginTop: '12px',
-              padding: '8px 14px',
-              width: '100%',
-              borderRadius: '10px',
-              border: '1px solid #c5a059',
-              background: '#fdfbf7',
-              color: '#792f2c',
-              fontWeight: '600',
-              fontSize: '12px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-            }}
-          >
-            <span>📜</span> Đọc Toàn Văn Bút Tích Lịch Sử
-          </button>
+        {exhibit.documentContent && (
+          <section className="story-block document-content-block">
+            <span className="section-kicker">NỘI DUNG TƯ LIỆU</span>
+            <p>{exhibit.documentContent}</p>
+          </section>
         )}
 
-        <div className="inspect-tip" style={{ marginTop: '14px', padding: '8px 10px', borderRadius: '8px', background: '#f5efe6', fontSize: '11px', color: '#68594b' }}>
-          💡 <em>Kéo chuột để xoay 360° và cuộn chuột để phóng to / thu nhỏ hiện vật.</em>
+        <section className="narration-box" aria-label="Thuyết minh bằng âm thanh">
+          <div>
+            <span className="section-kicker">THUYẾT MINH ÂM THANH</span>
+            <strong>Nghe câu chuyện của hiện vật</strong>
+          </div>
+          {narration.isSupported ? (
+            <div className="narration-actions">
+              <button className="narration-button" onClick={narration.toggle}>
+                {narration.isSpeaking ? '⏹ Dừng đọc' : '▶ Nghe thuyết minh'}
+              </button>
+              {narration.isSpeaking && <button className="narration-stop" onClick={narration.stop}>Dừng</button>}
+            </div>
+          ) : (
+            <span className="speech-unavailable">Thiết bị chưa hỗ trợ đọc tiếng Việt tự động.</span>
+          )}
+        </section>
+
+        <section className="story-block">
+          <span className="section-kicker">BỐI CẢNH LỊCH SỬ</span>
+          <p>{exhibit.historicalContext}</p>
+        </section>
+
+        <section className="story-block idea-block">
+          <span className="section-kicker">MẠCH HÀNH TRÌNH & TƯ TƯỞNG</span>
+          <p>{exhibit.keyIdea}</p>
+        </section>
+
+        <section className="reflection-card">
+          <span className="section-kicker">CÂU HỎI KHÁM PHÁ</span>
+          <strong>{exhibit.reflectionQuestion}</strong>
+          <button className="answer-button" onClick={() => setShowAnswer((current) => !current)}>
+            {showAnswer ? 'Ẩn gợi ý trả lời' : 'Mở gợi ý trả lời'}
+          </button>
+          {showAnswer && <p>{exhibit.reflectionAnswer}</p>}
+        </section>
+
+        {exhibit.discoverySteps && exhibit.discoverySteps.length > 0 && (
+          <section className="discovery-card" aria-label="Các bước khám phá">
+            <span className="section-kicker">KHÁM PHÁ TƯ LIỆU</span>
+            <strong className="discovery-heading">Tự kiểm tra trước khi xem đáp án</strong>
+            {exhibit.discoverySteps.map((step) => {
+              const selected = selectedAnswers[step.id]
+              const hasAnswered = selected !== undefined
+              return (
+                <div className="discovery-step" key={step.id}>
+                  <span className="step-title">{step.title}</span>
+                  <strong>{step.prompt}</strong>
+                  <div className="discovery-options">
+                    {step.options.map((option, index) => (
+                      <button
+                        className={`discovery-option ${hasAnswered && index === step.answer ? 'is-correct' : ''} ${hasAnswered && index === selected && index !== step.answer ? 'is-wrong' : ''}`}
+                        key={option}
+                        onClick={() => setSelectedAnswers((current) => ({ ...current, [step.id]: index }))}
+                      >
+                        <span>{String.fromCharCode(65 + index)}</span>{option}
+                      </button>
+                    ))}
+                  </div>
+                  {hasAnswered && <p className={selected === step.answer ? 'answer-feedback is-correct-text' : 'answer-feedback is-wrong-text'}>{selected === step.answer ? '✓ ' : 'Chưa đúng. '}{step.explanation}</p>}
+                </div>
+              )
+            })}
+          </section>
+        )}
+
+        <div className="inspect-tip">
+          💡 <em>Kéo chuột trái hoặc phải để xoay 360° · Cuộn chuột để phóng to / thu nhỏ.</em>
         </div>
 
         <div className="panel-footer">
@@ -64,92 +112,6 @@ export function ExhibitPanel({ exhibit, visited, onClose }: Props) {
         </div>
       </aside>
 
-      {/* Fullscreen Document Reader Modal */}
-      {expandedDoc && (
-        <div
-          className="doc-reader-overlay"
-          onClick={() => setExpandedDoc(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 100,
-            background: 'rgba(15, 18, 22, 0.85)',
-            backdropFilter: 'blur(10px)',
-            display: 'grid',
-            placeItems: 'center',
-            padding: '24px',
-          }}
-        >
-          <div
-            className="doc-reader-card"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: 'min(680px, 100%)',
-              maxHeight: '85vh',
-              overflowY: 'auto',
-              background: '#fcf8f0',
-              border: '2px solid #c5a059',
-              borderRadius: '20px',
-              padding: '32px',
-              boxShadow: '0 25px 80px rgba(0,0,0,0.5)',
-              color: '#2b231c',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-              <div>
-                <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.15em', color: '#8a735c', fontWeight: '700' }}>
-                  Tư Liệu Bút Tích Lịch Sử
-                </span>
-                <h3 style={{ margin: '4px 0 0', fontWeight: '700', fontSize: '22px', color: '#792f2c' }}>
-                  {exhibit.title}
-                </h3>
-              </div>
-              <button
-                onClick={() => setExpandedDoc(false)}
-                style={{
-                  border: 0,
-                  background: '#eee4d7',
-                  borderRadius: '50%',
-                  width: '36px',
-                  height: '36px',
-                  fontSize: '22px',
-                  cursor: 'pointer',
-                }}
-              >
-                ×
-              </button>
-            </div>
-
-            <div style={{ padding: '16px', background: '#fff', border: '1px solid #e2d7c8', borderRadius: '12px', margin: '16px 0', lineHeight: '1.8', fontSize: '14px' }}>
-              <strong style={{ color: '#792f2c', display: 'block', marginBottom: '8px' }}>Nội dung tư liệu:</strong>
-              <p style={{ margin: 0, whiteSpace: 'pre-line', fontStyle: 'italic', color: '#453a31' }}>
-                {exhibit.narration}
-              </p>
-            </div>
-
-            <p style={{ fontSize: '13px', color: '#68594b', lineHeight: '1.6' }}>
-              Bản thảo và tư liệu bút tích được số hóa 3D nguyên bản từ kho lưu trữ của Bảo tàng Hồ Chí Minh.
-            </p>
-
-            <button
-              onClick={() => setExpandedDoc(false)}
-              style={{
-                marginTop: '16px',
-                padding: '10px 22px',
-                border: 0,
-                borderRadius: '10px',
-                background: '#792f2c',
-                color: '#fff',
-                fontWeight: '600',
-                cursor: 'pointer',
-                float: 'right',
-              }}
-            >
-              Đóng cửa sổ đọc
-            </button>
-          </div>
-        </div>
-      )}
     </>
   )
 }

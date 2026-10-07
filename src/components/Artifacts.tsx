@@ -89,12 +89,14 @@ function GLBLoaderInner({
   targetHeight = 1.55,
   rotation = [0, 0, 0],
   offsetY = 0,
+  wrapperRotationY = 0,
 }: {
   path: string
   texturePath?: string
   targetHeight?: number
   rotation?: [number, number, number]
   offsetY?: number
+  wrapperRotationY?: number
 }) {
   const { scene } = useGLTF(path)
   const texture = texturePath ? useTexture(texturePath) : null
@@ -151,6 +153,7 @@ function GLBLoaderInner({
 
     // Căn giữa tâm X, Z và đặt điểm thấp nhất của model nằm khớp chính xác với mặt bục Y = 0
     const wrapper = new THREE.Group()
+    wrapper.rotation.y = wrapperRotationY
     clone.position.set(
       -center.x * scaleFactor,
       -box.min.y * scaleFactor + offsetY,
@@ -160,7 +163,7 @@ function GLBLoaderInner({
     wrapper.add(clone)
 
     return wrapper
-  }, [scene, texture, targetHeight, rotation, offsetY])
+  }, [scene, texture, targetHeight, rotation, offsetY, wrapperRotationY])
 
   return <primitive object={processedGroup} />
 }
@@ -172,6 +175,7 @@ export function GLBArtifact(props: {
   targetHeight?: number
   rotation?: [number, number, number]
   offsetY?: number
+  wrapperRotationY?: number
 }) {
   return (
     <Suspense fallback={null}>
