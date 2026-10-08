@@ -238,7 +238,7 @@ h1 { margin: 0; font-weight: 700; font-size: 16.5px; line-height: 1.15; letter-s
 
 .exit-inspect-btn {
   position: absolute;
-  top: 96px;
+  top: 20px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 25;
@@ -256,7 +256,7 @@ h1 { margin: 0; font-weight: 700; font-size: 16.5px; line-height: 1.15; letter-s
   cursor: pointer;
   backdrop-filter: blur(10px);
   transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
-  animation: panel-in 0.28s ease both;
+  animation: exit-button-in 0.28s ease both;
 }
 
 .exit-inspect-btn .exit-icon {
@@ -281,6 +281,11 @@ h1 { margin: 0; font-weight: 700; font-size: 16.5px; line-height: 1.15; letter-s
 .exit-inspect-btn:hover .exit-icon {
   background: rgba(255, 255, 255, 0.2);
   color: #ffffff;
+}
+
+@keyframes exit-button-in {
+  from { opacity: 0; transform: translate(-50%, -8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
 }
 
 @keyframes panel-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -376,6 +381,11 @@ h1 { margin: 0; font-weight: 700; font-size: 16.5px; line-height: 1.15; letter-s
 .discovery-step:first-of-type { border-top: 0; padding-top: 0; }
 .step-title { display: block; margin-bottom: 5px; color: #793330; font-size: 11px; font-weight: 800; }
 .discovery-step > strong { display: block; color: #51463a; font-size: 11px; line-height: 1.5; }
+.thought-review-card {
+  border-color: rgba(125, 82, 63, .28);
+  background: linear-gradient(180deg, rgba(255, 248, 235, .98), rgba(246, 235, 218, .92));
+}
+.thought-review-card .section-kicker { color: #793330; }
 .discovery-options { display: grid; gap: 6px; margin-top: 8px; }
 .discovery-option {
   display: flex;

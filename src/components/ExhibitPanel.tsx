@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Exhibit } from '../types'
+import { thoughtReviewQuestions } from '../data/thoughtReview'
 import { useSpeechNarration } from '../hooks/useSpeechNarration'
 
 type Props = {
@@ -11,6 +12,7 @@ type Props = {
 export function ExhibitPanel({ exhibit, visited, onClose }: Props) {
   const [showAnswer, setShowAnswer] = useState(false)
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number>>({})
+  const [selectedReviewAnswers, setSelectedReviewAnswers] = useState<Record<string, number>>({})
   const narration = useSpeechNarration(exhibit.audioText)
 
   return (
@@ -99,6 +101,33 @@ export function ExhibitPanel({ exhibit, visited, onClose }: Props) {
             })}
           </section>
         )}
+
+        <section className="discovery-card thought-review-card" aria-label="Ôn tập tư tưởng Hồ Chí Minh">
+          <span className="section-kicker">ÔN TẬP TƯ TƯỞNG HỒ CHÍ MINH</span>
+          <strong className="discovery-heading">Kiểm tra nhanh sau khi tham quan</strong>
+          {thoughtReviewQuestions.map((step) => {
+            const selected = selectedReviewAnswers[step.id]
+            const hasAnswered = selected !== undefined
+            return (
+              <div className="discovery-step" key={step.id}>
+                <span className="step-title">{step.title}</span>
+                <strong>{step.prompt}</strong>
+                <div className="discovery-options">
+                  {step.options.map((option, index) => (
+                    <button
+                      className={`discovery-option ${hasAnswered && index === step.answer ? 'is-correct' : ''} ${hasAnswered && index === selected && index !== step.answer ? 'is-wrong' : ''}`}
+                      key={option}
+                      onClick={() => setSelectedReviewAnswers((current) => ({ ...current, [step.id]: index }))}
+                    >
+                      <span>{String.fromCharCode(65 + index)}</span>{option}
+                    </button>
+                  ))}
+                </div>
+                {hasAnswered && <p className={selected === step.answer ? 'answer-feedback is-correct-text' : 'answer-feedback is-wrong-text'}>{selected === step.answer ? '✓ ' : 'Chưa đúng. '}{step.explanation}</p>}
+              </div>
+            )
+          })}
+        </section>
 
         <div className="inspect-tip">
           💡 <em>Kéo chuột trái hoặc phải để xoay 360° · Cuộn chuột để phóng to / thu nhỏ.</em>

@@ -1,4 +1,4 @@
-import { Environment, Html, Line, OrbitControls, PointerLockControls, Sparkles, useGLTF, useAnimations, useTexture } from '@react-three/drei'
+import { Environment, Html, Line, OrbitControls, Sparkles, useGLTF, useAnimations, useTexture } from '@react-three/drei'
 import { Canvas, ThreeEvent, useFrame, useThree } from '@react-three/fiber'
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
@@ -404,7 +404,13 @@ function WallFlag({ position, type, label, visible = true }: { position: [number
         <planeGeometry args={[3.2, flagHeight, 8, 5]} />
         <meshStandardMaterial map={texture} side={THREE.DoubleSide} roughness={0.72} />
       </mesh>
-      <Html position={[0, -(flagHeight / 2 + 0.23), 0.04]} center distanceFactor={12} style={{ pointerEvents: 'none' }}>
+      <Html
+        position={[0, -(flagHeight / 2 + 0.23), 0.04]}
+        center
+        distanceFactor={12}
+        occlude
+        style={{ pointerEvents: 'none' }}
+      >
         <span className="world-wall-label">{label}</span>
       </Html>
     </group>
@@ -684,31 +690,30 @@ function DisplayCase({ exhibit, active, visited, onNavigate, allowHover }: {
     }
   }, [exhibit])
 
+  const handlePedestalPointerUp = (event: ThreeEvent<PointerEvent>) => {
+    event.stopPropagation()
+    if (!active) onNavigate(exhibit)
+  }
+
   return (
-    <group
-      position={exhibit.position}
-      onClick={(e) => {
-        e.stopPropagation()
-        if (!active) onNavigate(exhibit)
-      }}
-    >
+    <group position={exhibit.position}>
       {/* Tiered Circular Pedestal Base (Bục tròn phân tầng sang trọng) */}
       {/* Tier 1: Dark Granite Foundation */}
-      <mesh position={[0, 0.07, 0]} receiveShadow castShadow material={new THREE.MeshStandardMaterial({ color: '#22272e', roughness: 0.35, metalness: 0.1 })}>
+      <mesh position={[0, 0.07, 0]} receiveShadow castShadow onPointerUp={handlePedestalPointerUp} material={new THREE.MeshStandardMaterial({ color: '#22272e', roughness: 0.35, metalness: 0.1 })}>
         <cylinderGeometry args={[1.55, 1.65, 0.14, 40]} />
       </mesh>
 
       {/* Tier 2: Mahogany Wood Ring with Flat Gold Trim Ring */}
-      <mesh position={[0, 0.18, 0]} receiveShadow castShadow material={new THREE.MeshStandardMaterial({ color: '#4a2511', roughness: 0.35 })}>
+      <mesh position={[0, 0.18, 0]} receiveShadow castShadow onPointerUp={handlePedestalPointerUp} material={new THREE.MeshStandardMaterial({ color: '#4a2511', roughness: 0.35 })}>
         <cylinderGeometry args={[1.35, 1.4, 0.12, 40]} />
       </mesh>
       {/* Horizontal Inlaid Gold Ring (Nằm phẳng trên mặt bục gỗ, không cắt ngang hiện vật) */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.245, 0]} castShadow material={new THREE.MeshStandardMaterial({ color: '#e5b83b', metalness: 0.9, roughness: 0.18 })}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.245, 0]} castShadow onPointerUp={handlePedestalPointerUp} material={new THREE.MeshStandardMaterial({ color: '#e5b83b', metalness: 0.9, roughness: 0.18 })}>
         <ringGeometry args={[1.32, 1.38, 48]} />
       </mesh>
 
       {/* Tier 3: Velvet/Marble Core Platform */}
-      <mesh position={[0, 0.28, 0]} receiveShadow castShadow material={new THREE.MeshStandardMaterial({ color: active ? '#8a2420' : '#2d333b', roughness: 0.5 })}>
+      <mesh position={[0, 0.28, 0]} receiveShadow castShadow onPointerUp={handlePedestalPointerUp} material={new THREE.MeshStandardMaterial({ color: active ? '#8a2420' : '#2d333b', roughness: 0.5 })}>
         <cylinderGeometry args={[1.18, 1.18, 0.08, 40]} />
       </mesh>
 
@@ -735,19 +740,6 @@ function DisplayCase({ exhibit, active, visited, onNavigate, allowHover }: {
       {/* Artifact with 360 Gentle Spin in Inspect Mode */}
       <RotatingArtifact exhibit={exhibit} active={active} />
 
-      {/* Hitbox vô hình bao quanh hiện vật: model hoặc vùng sát model đều mở Inspect */}
-      {!active && (
-        <group
-          position={[0, 1.55, 0]}
-          onClick={(e) => { e.stopPropagation(); onNavigate(exhibit) }}
-        >
-          <mesh>
-            <boxGeometry args={[3.8, 3.2, 3.8]} />
-            <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-          </mesh>
-        </group>
-      )}
-
       {/* Diamond / Star Marker - Ẩn khi đang inspect để không che khuất hiện vật */}
       {!active && (
         <mesh
@@ -755,7 +747,6 @@ function DisplayCase({ exhibit, active, visited, onNavigate, allowHover }: {
           position={[0, 2.65, 0]}
           onPointerOver={allowHover ? (e) => { e.stopPropagation(); setHovered(true) } : undefined}
           onPointerOut={allowHover ? () => setHovered(false) : undefined}
-          onClick={(e) => { e.stopPropagation(); onNavigate(exhibit) }}
           castShadow
         >
           <octahedronGeometry args={[hovered ? 0.34 : 0.27, 0]} />
@@ -1005,7 +996,6 @@ useGLTF.preload('/models/psx_indian_door.glb')
 
 function MuseumWorld({ command, activeId, visited, isLocked, viewMode, started, onArrive, onMoveAnywhere, onRequestOverview }: Props) {
   const controlsRef = useRef<any>(null)
-  const pointerLockRef = useRef<any>(null)
   const pathRef = useRef<{ waypoints: Point2D[]; exhibitId?: string } | null>(null)
   const lastWaypointCount = useRef(0)
   const [pings, setPings] = useState<Ping[]>([])
@@ -1013,13 +1003,6 @@ function MuseumWorld({ command, activeId, visited, isLocked, viewMode, started, 
   const playerPosRef = useRef<[number, number]>([0, 12.3])
   const [activeWaypoints, setActiveWaypoints] = useState<Point2D[]>([])
   const suppressFloorClickRef = useRef(false)
-
-  useEffect(() => {
-    // Rời FPS phải nhả Pointer Lock ngay để có thể bấm nút Inspect/Thoát.
-    if (!started || viewMode !== 'firstPerson' || activeId) {
-      pointerLockRef.current?.unlock?.()
-    }
-  }, [activeId, started, viewMode])
 
   useFrame(() => {
     if (pings.length > 0) {
@@ -1117,7 +1100,6 @@ function MuseumWorld({ command, activeId, visited, isLocked, viewMode, started, 
   return (
     <>
       <CameraController activeId={activeId} isLocked={isLocked} started={started} controlsRef={controlsRef} viewMode={viewMode} />
-      <FirstPersonController enabled={started && viewMode === 'firstPerson' && !activeId} pathRef={pathRef} playerPosRef={playerPosRef} onPositionUpdate={handlePositionUpdate} />
       <Environment preset="city" background={false} environmentIntensity={0.65} />
       <color attach="background" args={['#0f1216']} />
       <ambientLight intensity={1.1} />
@@ -1291,7 +1273,7 @@ function MuseumWorld({ command, activeId, visited, isLocked, viewMode, started, 
 
           {/* Phòng 1: Hoạt động quốc tế */}
           <RoomPlaque
-            position={[-12.27, 1.42, 4.0]}
+            position={[-12.27, 2.35, 4.0]}
             title="✦ PHÒNG 1: HOẠT ĐỘNG QUỐC TẾ ✦"
             subtitle="Chi bộ Đảng Pháp & Hành trình cứu nước (1920–1923)"
             width={3.8}
@@ -1301,7 +1283,7 @@ function MuseumWorld({ command, activeId, visited, isLocked, viewMode, started, 
 
           {/* Phòng 2: Tư liệu bút tích */}
           <RoomPlaque
-            position={[12.27, 1.42, 4.0]}
+            position={[12.27, 2.35, 4.0]}
             title="✦ PHÒNG 2: TƯ LIỆU BÚT TÍCH ✦"
             subtitle="Thư Bác Hồ gửi công nhân & Kháng chiến kiến quốc"
             width={3.8}
@@ -1311,7 +1293,7 @@ function MuseumWorld({ command, activeId, visited, isLocked, viewMode, started, 
 
           {/* Phòng 3: Bút tích lịch sử */}
           <RoomPlaque
-            position={[-12.27, 1.42, -4.8]}
+            position={[-12.27, 2.35, -4.8]}
             title="✦ PHÒNG 3: BÚT TÍCH LỊCH SỬ ✦"
             subtitle="Thư của Bác & Các bản tuyên cáo độc lập 1945"
             width={3.8}
@@ -1321,7 +1303,7 @@ function MuseumWorld({ command, activeId, visited, isLocked, viewMode, started, 
 
           {/* Phòng 4: Kỷ vật đời thường */}
           <RoomPlaque
-            position={[12.27, 1.42, -4.8]}
+            position={[12.27, 2.35, -4.8]}
             title="✦ PHÒNG 4: KỶ VẬT ĐỜI THƯỜNG ✦"
             subtitle="Chiếc áo lụa nâu giản dị & Kỷ vật chiến khu Việt Bắc"
             width={3.8}
@@ -1331,7 +1313,7 @@ function MuseumWorld({ command, activeId, visited, isLocked, viewMode, started, 
 
           {/* Phòng 5: Kỷ vật kháng chiến */}
           <RoomPlaque
-            position={[-12.27, 1.42, -11.5]}
+            position={[-12.27, 2.35, -11.5]}
             title="✦ PHÒNG 5: KỶ VẬT KHÁNG CHIẾN ✦"
             subtitle="Bộ quần áo kaki lịch sử & Kỷ vật ngoại giao 1959"
             width={3.8}
@@ -1341,7 +1323,7 @@ function MuseumWorld({ command, activeId, visited, isLocked, viewMode, started, 
 
           {/* Gian tưởng niệm */}
           <RoomPlaque
-            position={[0, 1.42, -16.27]}
+            position={[0, 2.35, -16.27]}
             title="★ GIAN TƯỞNG NIỆM CHỦ TỊCH HỒ CHÍ MINH ★"
             subtitle="Không gian tri ân Anh hùng giải phóng dân tộc"
             width={3.8}
@@ -1391,11 +1373,6 @@ function MuseumWorld({ command, activeId, visited, isLocked, viewMode, started, 
         maxPolarAngle={activeId ? Math.PI / 2.05 : Math.PI / 2.15}
         minDistance={activeId ? 2.0 : 6}
         maxDistance={activeId ? 6.2 : 68}
-      />
-      <PointerLockControls
-        ref={pointerLockRef}
-        enabled={started && viewMode === 'firstPerson' && !activeId}
-        pointerSpeed={0.35}
       />
     </>
   )

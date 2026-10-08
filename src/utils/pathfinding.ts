@@ -43,6 +43,15 @@ const OBSTACLES: Obstacle[] = [
   { minX: -12.4, maxX: -5.3, minZ: -9.1, maxZ: -8.5 },
   { minX: 5.3, maxX: 12.4, minZ: -9.1, maxZ: -8.5 },
 
+  // Các cột trang trí trong trục trung tâm. Phần đệm PLAYER_RADIUS trong
+  // isWalkable() khiến nhân vật giữ khoảng cách an toàn và không đi xuyên cột.
+  { minX: -2.72, maxX: -2.08, minZ: 6.68, maxZ: 7.32 },
+  { minX: 2.08, maxX: 2.72, minZ: 6.68, maxZ: 7.32 },
+  { minX: -2.72, maxX: -2.08, minZ: -2.22, maxZ: -1.58 },
+  { minX: 2.08, maxX: 2.72, minZ: -2.22, maxZ: -1.58 },
+  { minX: -2.72, maxX: -2.08, minZ: -9.02, maxZ: -8.38 },
+  { minX: 2.08, maxX: 2.72, minZ: -9.02, maxZ: -8.38 },
+
   // Display Cases (Pedestals + Glass)
   { minX: -1.4, maxX: 1.4, minZ: 6.3, maxZ: 8.7 },      // Statue (0, 7.5)
   { minX: -1.4, maxX: 1.4, minZ: 0.6, maxZ: 3.0 },      // Bust (0, 1.8)

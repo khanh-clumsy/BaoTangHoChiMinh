@@ -13,7 +13,9 @@ export default function App() {
   const [started, setStarted] = useState(false)
   const [commandId, setCommandId] = useState(0)
   const isLocked = true
-  const [viewMode, setViewMode] = useState<'overview' | 'firstPerson'>('overview')
+  // Tạm khóa góc nhìn thứ nhất để tránh Pointer Lock làm kẹt con trỏ khi
+  // chuyển vào/ra chế độ inspect.
+  const viewMode = 'overview' as const
   const [isLoaded, setIsLoaded] = useState(false)
 
   const progress = useMemo(() => `${visited.size}/${exhibits.length}`, [visited])
@@ -22,7 +24,6 @@ export default function App() {
     const nextId = commandId + 1
     setCommandId(nextId)
     setActive(undefined)
-    setViewMode('overview')
     setCommand({ id: nextId, ...payload })
   }
 
@@ -54,7 +55,7 @@ export default function App() {
         started={started}
         onArrive={handleArrive}
         onMoveAnywhere={() => setActive(undefined)}
-        onRequestOverview={() => setViewMode('overview')}
+        onRequestOverview={() => undefined}
       />
 
       {started && (
@@ -69,15 +70,6 @@ export default function App() {
             </div>
 
             <div className="topbar-actions">
-              <button
-                className={`lock-toggle-btn ${viewMode === 'firstPerson' ? 'is-unlocked' : 'is-locked'}`}
-                onClick={() => setViewMode((current) => current === 'firstPerson' ? 'overview' : 'firstPerson')}
-                title={viewMode === 'firstPerson' ? 'Quay lại góc nhìn toàn cảnh' : 'Chuyển sang góc nhìn thứ nhất'}
-              >
-                <span className="lock-icon">{viewMode === 'firstPerson' ? '🏛️' : '👁️'}</span>
-                <span className="lock-text">{viewMode === 'firstPerson' ? 'Góc nhìn toàn cảnh' : 'Góc nhìn thứ nhất'}</span>
-              </button>
-
               <div className="progress-box">
                 <span>TIẾN ĐỘ THAM QUAN</span>
                 <strong>{progress}</strong>
@@ -91,7 +83,7 @@ export default function App() {
             <strong>Hướng dẫn điều hướng</strong>
             <span>🧭 Nhấp chuột xuống sàn để di chuyển nhân vật.</span>
             <span>🏛️ Chọn hiện vật hoặc điểm trên sơ đồ để tới vị trí trưng bày.</span>
-            <span>{viewMode === 'firstPerson' ? '⌨️ WASD để đi bộ · Nhấp vào khung cảnh để khóa chuột và xoay nhìn.' : '🖱️ Click xuống sàn để di chuyển · Map cố định; chỉ kéo để xoay khi inspect.'}</span>
+            <span>🖱️ Click xuống sàn để di chuyển · Map cố định; chỉ kéo để xoay khi inspect.</span>
           </div>
         </>
       )}
